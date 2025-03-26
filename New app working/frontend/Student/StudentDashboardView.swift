@@ -158,6 +158,23 @@ struct StudentDashboardView: View {
                         }
                     }
                     
+                    // New Button: Send Test Record
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            sendTestRecord()
+                        }) {
+                            Text("Send Test Record")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(width: 150, height: 50)
+                                .background(Color.blue)
+                                .cornerRadius(10)
+                                .shadow(color: Color.blue.opacity(0.1), radius: 5, x: 0, y: 4)
+                        }
+                        Spacer()
+                    }
+                    
                     Spacer()
                 }
                 .padding()
@@ -290,6 +307,26 @@ struct StudentDashboardView: View {
         let minutes = (Int(time) % 3600) / 60
         let seconds = Int(time) % 60
         return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+    
+    // New Function: Send Test Record to CloudKit
+    private func sendTestRecord() {
+        Task {
+            do {
+                // Create a dummy attendance record (replace UUID() with an actual menteeID if available)
+                let testAttendance = AttendanceRecordCK(
+                    menteeID: UUID(),
+                    date: Date(),
+                    clockInTime: Date(),
+                    clockOutTime: Date().addingTimeInterval(3600), // 1 hour shift
+                    status: .present
+                )
+                let savedRecord = try await CloudKitService.shared.saveAttendance(testAttendance)
+                print("Test record saved successfully: \(savedRecord.id.uuidString)")
+            } catch {
+                print("Error saving test record: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
