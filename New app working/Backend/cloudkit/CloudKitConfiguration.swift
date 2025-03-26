@@ -5,7 +5,6 @@
 //  Created by AB on 3/26/25.
 //
 
-
 import Foundation
 import SwiftUI
 import Combine
@@ -115,6 +114,12 @@ class CloudKitAppConfig: ObservableObject {
     
     // MARK: - Clock In/Out Integration
     
+    /// Verify the attendance code
+    func verifyAttendanceCode(code: String) async -> Bool {
+        // Implement the verification logic
+        return attendanceManager.verifyAttendanceCode(code: code)
+    }
+    
     /// Handle QR Code scan
     func handleQRCodeScan(code: String) async -> Bool {
         guard let currentUser = userManager.currentUser else { return false }
@@ -128,8 +133,21 @@ class CloudKitAppConfig: ObservableObject {
         return false
     }
     
+    /// Clock in the current user
+    func clockInCurrentUser() async -> Bool {
+        // Ensure we have a current user
+        guard let currentUser = userManager.currentUser else {
+            print("No current user found")
+            return false
+        }
+        
+        // Attempt to clock in the user
+        return await attendanceManager.clockIn(menteeID: currentUser.id)
+    }
+    
     /// Clock out the current user
     func clockOutCurrentUser() async -> Bool {
+        // Attempt to clock out
         return await attendanceManager.clockOut()
     }
     
@@ -195,35 +213,5 @@ class CloudKitAppConfig: ObservableObject {
         attendanceManager.reset()
         menteeManager.reset()
         userManager.reset()
-    }
-}
-
-// Add these methods to the CloudKitAppConfig class
-
-extension CloudKitAppConfig {
-    /// Verify the attendance code
-    func verifyAttendanceCode(code: String) async -> Bool {
-        // Implement the verification logic
-        // This could involve checking against a predefined code or
-        // validating with a server/CloudKit
-        return attendanceManager.verifyAttendanceCode(code: code)
-    }
-    
-    /// Clock in the current user
-    func clockInCurrentUser() async -> Bool {
-        // Ensure we have a current user
-        guard let currentUser = userManager.currentUser else {
-            print("No current user found")
-            return false
-        }
-        
-        // Attempt to clock in the user
-        return await attendanceManager.clockIn(menteeID: currentUser.id)
-    }
-    
-    /// Clock out the current user
-    func clockOutCurrentUser() async -> Bool {
-        // Attempt to clock out
-        return await attendanceManager.clockOut()
     }
 }
