@@ -96,6 +96,28 @@ class CloudKitAppConfig: ObservableObject {
         DispatchQueue.main.async {
             self.isSetupComplete = true
         }
+        
+        /// Reset all managers (for logout)
+            func resetAll() {
+                attendanceManager.reset()
+                menteeManager.reset()
+                userManager.reset()
+            }
+            
+            /// Log in a registered user from device registration
+            func loginRegisteredUser(_ user: UserCK) async {
+                DispatchQueue.main.async {
+                    self.userManager.currentUser = user
+                }
+                
+                // Additional setup for the logged-in user
+                if user.role == .mentor {
+                    await menteeManager.fetchMyMentees(for: user.id)
+                }
+                
+                // Load attendance records
+                await attendanceManager.fetchAttendanceRecords(for: user.id)
+            }
     }
     
     // MARK: - Role-Based Navigation

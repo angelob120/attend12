@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CloudKit
 
 struct OnboardingView: View {
     // MARK: - User Inputs
@@ -14,7 +15,16 @@ struct OnboardingView: View {
     @State private var phone: String = ""
     @State private var classCode: String = ""
     
-    // MARK: - Body
+    // Device-specific unique identifier
+    private let deviceUUID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    
+    // State to control navigation
+    @State private var registrationComplete = false
+    @State private var registrationError: String?
+    
+    // Environment object for CloudKit configuration
+    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    
     var body: some View {
         NavigationView {
             Form {
@@ -43,11 +53,19 @@ struct OnboardingView: View {
                         Text("Submit")
                             .frame(maxWidth: .infinity)
                     }
+                    .disabled(fullName.isEmpty || email.isEmpty || classCode.isEmpty)
+                }
+                
+                // Error Message
+                if let error = registrationError {
+                    Section {
+                        Text(error)
+                            .foregroundColor(.red)
+                    }
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Centered Title
                 ToolbarItem(placement: .principal) {
                     Text("Onboarding")
                         .font(.headline)
@@ -56,15 +74,51 @@ struct OnboardingView: View {
             }
             .toolbarBackground(Color.customGreen, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .background(
+                NavigationLink(
+                    destination: ContentView(),
+                    isActive: $registrationComplete
+                ) {
+                    EmptyView()
+                }
+            )
         }
     }
     
     // MARK: - Actions
     private func submitData() {
-        print("Name: \(fullName)")
-        print("Email: \(email)")
-        print("Phone: \(phone)")
-        print("Class Code: \(classCode)")
+        Task {
+            do {
+                // Create a new user in CloudKit with device UUID
+                let newUser = UserCK(
+                    name: fullName,
+                    email: email,
+                    phone: phone,
+                    role: .student,
+                    status: .pending,
+                    vacationDays: 0,
+                    timeOffBalance: 0
+                )
+                
+                // Add device UUID to a custom field
+                if let record = newUser.record {
+                    record["deviceUUID"] = deviceUUID
+                }
+                
+                // Save user to CloudKit
+                let savedUser = try await CloudKitService.shared.saveUser(newUser)
+                
+                // Mark registration as complete
+                DispatchQueue.main.async {
+                    registrationComplete = true
+                }
+            } catch {
+                // Handle registration error
+                DispatchQueue.main.async {
+                    registrationError = "Registration failed: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 
