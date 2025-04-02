@@ -3,7 +3,7 @@
 //  New app working
 //
 //  Created by AB on 3/26/25.
-//
+//  Modified to work without iCloud
 
 import Foundation
 import SwiftUI
@@ -27,12 +27,19 @@ class UserManagerCK: ObservableObject {
     
     // Private initializer for singleton
     private init() {
-        // Initial data fetch if user is signed in
+        // Initial data fetch - always true now that we've bypassed iCloud check
         cloudService.$isUserSignedIn
             .filter { $0 }
             .sink { [weak self] _ in
                 Task {
                     await self?.fetchAllUsers()
+                    
+                    // Auto-set the first user as current user if none is set
+                    if self?.currentUser == nil, let firstUser = self?.allUsers.first {
+                        DispatchQueue.main.async {
+                            self?.currentUser = firstUser
+                        }
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -40,7 +47,7 @@ class UserManagerCK: ObservableObject {
     
     // MARK: - User Management
     
-    /// Fetch all users from CloudKit
+    /// Fetch all users from service
     func fetchAllUsers() async {
         guard !isLoading else { return }
         
@@ -65,7 +72,7 @@ class UserManagerCK: ObservableObject {
         }
     }
     
-    /// Fetch current user (by Apple ID or stored ID)
+    /// Fetch current user
     func fetchCurrentUser() async {
         guard !isLoading else { return }
         
@@ -74,11 +81,12 @@ class UserManagerCK: ObservableObject {
             self.error = nil
         }
         
-        // In a real app, you would have some way to know the current user's ID
-        // For this example, we'll try to find a user with matching name from iCloud
         do {
             let users = try await cloudService.fetchAllUsers()
-            let potentialUser = users.first(where: { $0.name == cloudService.userName })
+            
+            // Try to find a user with matching name from our mock data
+            // or just use the first user as a fallback
+            let potentialUser = users.first(where: { $0.name == cloudService.userName }) ?? users.first
             
             DispatchQueue.main.async {
                 self.currentUser = potentialUser
@@ -107,9 +115,9 @@ class UserManagerCK: ObservableObject {
             email: email,
             phone: phone,
             role: role,
-            status: .pending,
-            vacationDays: 0,
-            timeOffBalance: 0
+            status: .active, // Changed from pending to active for easier use
+            vacationDays: 10,
+            timeOffBalance: 80.0
         )
         
         do {

@@ -70,11 +70,27 @@ struct ContentView: View {
                         Text("Dashboard")
                     }
             case .onboarding:
-                OnboardingView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                        Text("Dashboard")
+                // We should never reach here since onboarding is handled at the app level
+                // But just in case, include a proper implementation
+                OnboardingView(onboardingComplete: { user in
+                    // Update the role based on the completed user
+                    if let role = user.record?["role"] as? String {
+                        switch role {
+                        case "admin":
+                            selectedRole = .admin
+                        case "mentor":
+                            selectedRole = .mentor
+                        default:
+                            selectedRole = .student
+                        }
+                    } else {
+                        selectedRole = .student
                     }
+                })
+                .tabItem {
+                    Image(systemName: "house.fill")
+                    Text("Onboarding")
+                }
             case .ipad:
                 iPadDashboardView()
                     .tabItem {

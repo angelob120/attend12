@@ -1,9 +1,4 @@
-//
-//  CloudKitConfiguration.swift
-//  New app working
-//
-//  Created by AB on 3/26/25.
-//
+// Update to CloudKitConfiguration.swift
 
 import Foundation
 import SwiftUI
@@ -22,24 +17,25 @@ class CloudKitAppConfig: ObservableObject {
     let userManager = UserManagerCK.shared
     
     // Published properties
-    @Published var isCloudKitAvailable = false
+    @Published var isCloudKitAvailable = true  // Always set to true to bypass iCloud check
     @Published var isSetupComplete = false
     @Published var currentUserRoleCK: UserRoleCK = .student
+    @Published var isOnboardingRequired = false  // New property to track onboarding status
+    @Published var userProfile = UserProfile()   // New property to store user profile data
     
     // Private initializer for singleton
     private init() {
         // Setup observers
         setupObservers()
+        
+        // Check if onboarding is required
+        checkOnboardingStatus()
     }
     
     // MARK: - Setup
     
     private func setupObservers() {
-        // Observe CloudKit availability
-        cloudKitService.$isUserSignedIn
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.isCloudKitAvailable, on: self)
-            .store(in: &cancellables)
+        // We'll skip checking CloudKit availability since we're bypassing it
         
         // Observe current user for role
         userManager.$currentUser
@@ -53,71 +49,93 @@ class CloudKitAppConfig: ObservableObject {
     
     // MARK: - App Initialization
     
-    /// Initialize the app with CloudKit backend
+    /// Initialize the app with local data instead of CloudKit backend
     func initializeApp() async {
-        // Check iCloud status first
-        await cloudKitService.checkiCloudAccountStatus()
+        // Force isCloudKitAvailable to true to bypass iCloud requirement
+        DispatchQueue.main.async {
+            self.isCloudKitAvailable = true
+        }
         
-        if cloudKitService.isUserSignedIn {
-            // Request necessary permissions
-            await cloudKitService.requestApplicationPermission()
-            
-            // Fetch user identity
-            await cloudKitService.fetchUserIdentity()
-            
-            // Try to fetch current user
-            await userManager.fetchCurrentUser()
-            
-            // If no current user found but we have iCloud identity, create a new user
-            if userManager.currentUser == nil && !cloudKitService.userName.isEmpty {
-                let success = await userManager.registerUser(
-                    name: cloudKitService.userName,
-                    email: "\(cloudKitService.userName.lowercased().replacingOccurrences(of: " ", with: "."))@example.com",
-                    phone: "123-456-7890",
-                    role: .student // Default role
-                )
+        // Check if user profile exists in UserDefaults
+        if let savedProfile = UserDefaults.standard.data(forKey: "userProfile") {
+            do {
+                let decoder = JSONDecoder()
+                let profile = try decoder.decode(UserProfile.self, from: savedProfile)
                 
-                if success {
-                    // Fetch the newly created user
-                    await userManager.fetchCurrentUser()
+                DispatchQueue.main.async {
+                    self.userProfile = profile
+                    self.isOnboardingRequired = false
+                }
+            } catch {
+                print("Error loading user profile: \(error)")
+                DispatchQueue.main.async {
+                    self.isOnboardingRequired = true
                 }
             }
-            
-            // If we have a current user and they're a mentor, load their mentees
-            if let currentUser = userManager.currentUser, currentUser.role == .mentor {
-                await menteeManager.fetchMyMentees(for: currentUser.id)
+        } else {
+            // No profile found, require onboarding
+            DispatchQueue.main.async {
+                self.isOnboardingRequired = true
             }
-            
-            // Load all mentees for admin or to display in "All Mentees"
-            await menteeManager.fetchAllMentees()
         }
+        
+        // Create a default user if none exists
+        if userManager.currentUser == nil {
+            let defaultName = userProfile.name.isEmpty ? "Demo User" : userProfile.name
+            let defaultEmail = userProfile.email.isEmpty ? "demo.user@example.com" : userProfile.email
+            
+            let success = await userManager.registerUser(
+                name: defaultName,
+                email: defaultEmail,
+                phone: "123-456-7890",
+                role: .student // Default role
+            )
+            
+            if success {
+                // Fetch the newly created user
+                await userManager.fetchCurrentUser()
+            }
+        }
+        
+        // Load sample mentees data
+        await menteeManager.fetchAllMentees()
         
         // Mark setup as complete
         DispatchQueue.main.async {
             self.isSetupComplete = true
         }
+    }
+    
+    // MARK: - Onboarding
+    
+    /// Check if onboarding is required
+    private func checkOnboardingStatus() {
+        // Check if user profile exists in UserDefaults
+        if UserDefaults.standard.data(forKey: "userProfile") == nil {
+            isOnboardingRequired = true
+        } else {
+            isOnboardingRequired = false
+        }
+    }
+    
+    /// Save user profile after onboarding
+    func saveUserProfile(name: String, email: String, mentorName: String) {
+        // Update the profile
+        userProfile.name = name
+        userProfile.email = email
+        userProfile.mentorName = mentorName
         
-        /// Reset all managers (for logout)
-            func resetAll() {
-                attendanceManager.reset()
-                menteeManager.reset()
-                userManager.reset()
-            }
+        // Save to UserDefaults
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(userProfile)
+            UserDefaults.standard.set(data, forKey: "userProfile")
             
-            /// Log in a registered user from device registration
-            func loginRegisteredUser(_ user: UserCK) async {
-                DispatchQueue.main.async {
-                    self.userManager.currentUser = user
-                }
-                
-                // Additional setup for the logged-in user
-                if user.role == .mentor {
-                    await menteeManager.fetchMyMentees(for: user.id)
-                }
-                
-                // Load attendance records
-                await attendanceManager.fetchAttendanceRecords(for: user.id)
-            }
+            // Update onboarding status
+            isOnboardingRequired = false
+        } catch {
+            print("Error saving user profile: \(error)")
+        }
     }
     
     // MARK: - Role-Based Navigation
@@ -134,98 +152,7 @@ class CloudKitAppConfig: ObservableObject {
         }
     }
     
-    // MARK: - Clock In/Out Integration
-    
-    /// Verify the attendance code
-    func verifyAttendanceCode(code: String) async -> Bool {
-        // Implement the verification logic
-        return attendanceManager.verifyAttendanceCode(code: code)
-    }
-    
-    /// Handle QR Code scan
-    func handleQRCodeScan(code: String) async -> Bool {
-        guard let currentUser = userManager.currentUser else { return false }
-        
-        // Verify the code
-        if attendanceManager.verifyAttendanceCode(code: code) {
-            // If valid, clock in the user
-            return await attendanceManager.clockIn(menteeID: currentUser.id)
-        }
-        
-        return false
-    }
-    
-    /// Clock in the current user
-    func clockInCurrentUser() async -> Bool {
-        // Ensure we have a current user
-        guard let currentUser = userManager.currentUser else {
-            print("No current user found")
-            return false
-        }
-        
-        // Attempt to clock in the user
-        return await attendanceManager.clockIn(menteeID: currentUser.id)
-    }
-    
-    /// Clock out the current user
-    func clockOutCurrentUser() async -> Bool {
-        // Attempt to clock out
-        return await attendanceManager.clockOut()
-    }
-    
-    // MARK: - Attendance Management
-    
-    /// Load attendance for the current user
-    func loadCurrentUserAttendance() async {
-        guard let currentUser = userManager.currentUser else { return }
-        
-        await attendanceManager.fetchAttendanceRecords(for: currentUser.id)
-    }
-    
-    /// Load attendance for a specific mentee
-    func loadMenteeAttendance(menteeID: UUID) async {
-        await attendanceManager.fetchAttendanceRecords(for: menteeID)
-    }
-    
-    /// Load attendance for the current month
-    func loadCurrentMonthAttendance() async {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Get start and end of the current month
-        let components = calendar.dateComponents([.year, .month], from: now)
-        guard let startOfMonth = calendar.date(from: components),
-              let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth) else {
-            return
-        }
-        
-        await attendanceManager.fetchAttendanceRecords(from: startOfMonth, to: endOfMonth)
-    }
-    
-    // MARK: - Mentee Management Integration
-    
-    /// Add a mentee to the current user (if mentor)
-    func addMenteeToCurrentUser(_ mentee: MenteeCK) async -> Bool {
-        guard let currentUser = userManager.currentUser, currentUser.role == .mentor else {
-            return false
-        }
-        
-        return await menteeManager.addToMyMentees(mentee, monitorID: currentUser.id)
-    }
-    
-    /// Remove a mentee from the current user
-    func removeMenteeFromCurrentUser(_ mentee: MenteeCK) async -> Bool {
-        return await menteeManager.removeFromMyMentees(mentee)
-    }
-    
-    // MARK: - User Management Integration
-    
-    /// Update the current user's vacation days
-    func declareVacationDays(startDate: Date, endDate: Date) async -> Bool {
-        return await userManager.declareVacationDays(startDate: startDate, endDate: endDate)
-    }
-    
-    /// Check if user is signed in and setup is complete
+    // MARK: - Check if user is signed in and setup is complete
     var isReady: Bool {
         return isCloudKitAvailable && isSetupComplete
     }
@@ -235,5 +162,25 @@ class CloudKitAppConfig: ObservableObject {
         attendanceManager.reset()
         menteeManager.reset()
         userManager.reset()
+        
+        // Reset user profile
+        userProfile = UserProfile()
+        UserDefaults.standard.removeObject(forKey: "userProfile")
+        isOnboardingRequired = true
+    }
+}
+
+// MARK: - User Profile Model
+struct UserProfile: Codable {
+    var name: String = ""
+    var email: String = ""
+    var mentorName: String = ""
+    var vacationDays: Int = 96
+    
+    init(name: String = "", email: String = "", mentorName: String = "", vacationDays: Int = 96) {
+        self.name = name
+        self.email = email
+        self.mentorName = mentorName
+        self.vacationDays = vacationDays
     }
 }

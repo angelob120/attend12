@@ -18,7 +18,7 @@ struct NotificationItem: Identifiable {
 }
 
 // MARK: - NotificationsView
-struct NotificationsView1: View {
+struct NotificationsView: View {
     @State private var notifications: [NotificationItem] = [
         NotificationItem(title: "Welcome", message: "Thanks for joining the app!"),
         NotificationItem(title: "Update", message: "Your schedule has been updated.")

@@ -3,13 +3,23 @@
 //  New app working
 //
 //  Created by AB on 1/9/25.
-//
+//  Updated to display user data from onboarding
 
 import SwiftUI
 
 struct ProfileView: View {
+    // Use the shared UserData to display user information
+    @ObservedObject private var userData = UserData.shared
+    
     // Example state for toggles, etc.
     @State private var alertPopupsOn = true
+    
+    // Current date formatter helper function
+    private func formattedDate() -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        return formatter.string(from: Date())
+    }
     
     var body: some View {
         ScrollView {
@@ -60,12 +70,12 @@ struct ProfileView: View {
                         .frame(width: 140, height: 140) // Match circle size
                     }
                     
-                    // Text Section on the Right
+                    // Text Section on the Right - Now displays data from shared UserData
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Your Name")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("Angelo Brown")
+                        Text(userData.fullName.isEmpty ? "Not Set" : userData.fullName)
                             .font(.title3)
                             .bold()
                             .foregroundColor(.primary)
@@ -73,7 +83,7 @@ struct ProfileView: View {
                         Text("Mentor")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("Marcus W.")
+                        Text(userData.mentorName.isEmpty ? "Not Assigned" : userData.mentorName)
                             .font(.title3)
                             .bold()
                             .foregroundColor(.primary)
@@ -81,7 +91,7 @@ struct ProfileView: View {
                         Text("Vacation Time")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("96 Days")
+                        Text("\(userData.vacationDays) Days")
                             .font(.title3)
                             .bold()
                             .foregroundColor(.primary)
@@ -93,9 +103,9 @@ struct ProfileView: View {
                 
                 // GENERAL
                 SettingsSectionView(title: "General") {
-                    SettingsRow(iconName: "person.fill", text: "Kyra Gibbs")
-                    SettingsRow(iconName: "envelope.fill", text: "kgibbs23@msu.idserve.net")
-                    SettingsRow(iconName: "calendar", text: "September 30, 2025")
+                    SettingsRow(iconName: "person.fill", text: userData.fullName.isEmpty ? "Not Set" : userData.fullName)
+                    SettingsRow(iconName: "envelope.fill", text: userData.email.isEmpty ? "Not Set" : userData.email)
+                    SettingsRow(iconName: "calendar", text: formattedDate())
                 }
                 
                 // NOTIFICATIONS

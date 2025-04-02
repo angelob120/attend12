@@ -3,7 +3,7 @@
 //  New app working
 //
 //  Created by AB on 3/26/25.
-//
+//  Modified to work without iCloud
 
 import Foundation
 import CloudKit
@@ -29,9 +29,14 @@ class CloudKitService: ObservableObject {
     private let privateDB: CKDatabase
     private let sharedDB: CKDatabase
     
-    @Published var isUserSignedIn = false
-    @Published var userName: String = ""
-    @Published var permissionStatus: Bool = false
+    @Published var isUserSignedIn = true // Always true to bypass iCloud requirement
+    @Published var userName: String = "Demo User" // Default user name
+    @Published var permissionStatus: Bool = true // Default permission status
+    
+    // Local storage for records when CloudKit is unavailable
+    private var localAttendanceRecords: [UUID: AttendanceRecordCK] = [:]
+    private var localMenteeRecords: [UUID: MenteeCK] = [:]
+    private var localUserRecords: [UUID: UserCK] = [:]
     
     // Private singleton initializer
     private init() {
@@ -40,383 +45,316 @@ class CloudKitService: ObservableObject {
         privateDB = container.privateCloudDatabase
         sharedDB = container.sharedCloudDatabase
         
-        // Check iCloud status when initialized
-        Task {
-            await checkiCloudAccountStatus()
-            await requestApplicationPermission()
-            await fetchUserIdentity()
+        // Create some initial data
+        setupLocalData()
+    }
+    
+    // MARK: - Setup Local Data
+    
+    private func setupLocalData() {
+        // Create a demo user
+        let demoUserID = UUID()
+        let demoUser = UserCK(
+            id: demoUserID,
+            name: "Demo User",
+            email: "demo@example.com",
+            phone: "123-456-7890",
+            role: .student,
+            status: .active,
+            vacationDays: 10,
+            timeOffBalance: 80.0
+        )
+        localUserRecords[demoUserID] = demoUser
+        
+        // Create a demo mentor
+        let mentorID = UUID()
+        let mentor = UserCK(
+            id: mentorID,
+            name: "Demo Mentor",
+            email: "mentor@example.com",
+            phone: "987-654-3210",
+            role: .mentor,
+            status: .active,
+            vacationDays: 15,
+            timeOffBalance: 120.0
+        )
+        localUserRecords[mentorID] = mentor
+        
+        // Create a demo admin
+        let adminID = UUID()
+        let admin = UserCK(
+            id: adminID,
+            name: "Demo Admin",
+            email: "admin@example.com",
+            phone: "555-555-5555",
+            role: .admin,
+            status: .active,
+            vacationDays: 20,
+            timeOffBalance: 160.0
+        )
+        localUserRecords[adminID] = admin
+        
+        // Create some demo mentees
+        let menteeIDs = [UUID(), UUID(), UUID(), UUID()]
+        let menteeNames = ["Angelo Brown", "Emily Davis", "Michael Johnson", "Jane Smith"]
+        let menteeEmails = ["angelo@example.com", "emily@example.com", "michael@example.com", "jane@example.com"]
+        let menteePhones = ["123-456-7890", "234-567-8901", "345-678-9012", "456-789-0123"]
+        let menteeProgress = [90, 85, 75, 95]
+        
+        for i in 0..<menteeIDs.count {
+            let mentee = MenteeCK(
+                id: menteeIDs[i],
+                name: menteeNames[i],
+                email: menteeEmails[i],
+                phone: menteePhones[i],
+                progress: menteeProgress[i],
+                monitorID: i < 2 ? mentorID : nil // First two mentees assigned to mentor
+            )
+            localMenteeRecords[menteeIDs[i]] = mentee
+            
+            // Create attendance records for each mentee
+            createAttendanceRecordsForMentee(menteeIDs[i])
         }
     }
     
-    // MARK: - iCloud Account Status
+    private func createAttendanceRecordsForMentee(_ menteeID: UUID) {
+        let calendar = Calendar.current
+        let today = Date()
+        
+        // Create records for the past 5 days
+        for day in 1...5 {
+            if let date = calendar.date(byAdding: .day, value: -day, to: today) {
+                // Skip weekends
+                let weekday = calendar.component(.weekday, from: date)
+                if weekday != 1 && weekday != 7 {
+                    // Randomly decide status
+                    let statuses: [AttendanceStatusCK] = [.present, .present, .present, .tardy, .absent]
+                    let randomStatus = statuses[Int.random(in: 0..<statuses.count)]
+                    
+                    // Create clock-in and clock-out times
+                    let clockInHour = randomStatus == .tardy ? 9 + Int.random(in: 0...1) : 9
+                    let clockInMinute = randomStatus == .tardy ? Int.random(in: 15...45) : Int.random(in: 0...10)
+                    
+                    let clockInTime = calendar.date(bySettingHour: clockInHour, minute: clockInMinute, second: 0, of: date) ?? date
+                    let clockOutTime = calendar.date(bySettingHour: 17, minute: Int.random(in: 0...30), second: 0, of: date) ?? date
+                    
+                    let attendanceRecord = AttendanceRecordCK(
+                        id: UUID(),
+                        menteeID: menteeID,
+                        date: date,
+                        clockInTime: clockInTime,
+                        clockOutTime: clockOutTime,
+                        status: randomStatus
+                    )
+                    
+                    localAttendanceRecords[attendanceRecord.id] = attendanceRecord
+                }
+            }
+        }
+    }
+    
+    // MARK: - iCloud Account Status (Bypassed)
     func checkiCloudAccountStatus() async {
-        do {
-            let status = try await container.accountStatus()
-            
-            DispatchQueue.main.async {
-                switch status {
-                case .available:
-                    self.isUserSignedIn = true
-                case .noAccount, .restricted, .couldNotDetermine:
-                    self.isUserSignedIn = false
-                default:
-                    self.isUserSignedIn = false
-                }
-            }
-        } catch {
-            print("Error checking iCloud Account Status: \(error)")
-            DispatchQueue.main.async {
-                self.isUserSignedIn = false
-            }
+        DispatchQueue.main.async {
+            self.isUserSignedIn = true // Always set to true
         }
     }
     
-    // MARK: - Request Permissions
+    // MARK: - Request Permissions (Bypassed)
     func requestApplicationPermission() async {
-        do {
-            let status = try await container.requestApplicationPermission(.userDiscoverability)
-            DispatchQueue.main.async {
-                self.permissionStatus = status == .granted
-            }
-        } catch {
-            print("Error requesting permission: \(error)")
-            DispatchQueue.main.async {
-                self.permissionStatus = false
-            }
+        DispatchQueue.main.async {
+            self.permissionStatus = true // Always set to true
         }
     }
     
-    // MARK: - Fetch User Identity
+    // MARK: - Fetch User Identity (returns mock data)
     func fetchUserIdentity() async {
-        do {
-            let userID = try await container.userRecordID()
-            let identity = try await container.userIdentity(forUserRecordID: userID)
-            
-            if let name = identity?.nameComponents?.givenName {
-                DispatchQueue.main.async {
-                    self.userName = name
-                }
-            }
-        } catch {
-            print("Error fetching user identity: \(error)")
+        DispatchQueue.main.async {
+            self.userName = "Demo User" // Always use demo user
         }
     }
     
     // MARK: - CRUD Operations
     
-    // Save attendance record
+    // Save attendance record to local storage
     func saveAttendance(_ attendance: AttendanceRecordCK) async throws -> AttendanceRecordCK {
-        let record = CKRecord(attendance: attendance)
+        var updatedAttendance = attendance
         
-        do {
-            let savedRecord = try await privateDB.save(record)
-            var updatedAttendance = attendance
-            updatedAttendance.record = savedRecord
-            return updatedAttendance
-        } catch {
-            throw CloudKitError.unexpectedError(error)
+        // If this is a new record, generate a CKRecord-like object
+        if updatedAttendance.record == nil {
+            let record = CKRecord(recordType: "Attendance")
+            record["id"] = attendance.id.uuidString
+            record["menteeID"] = attendance.menteeID.uuidString
+            record["date"] = attendance.date
+            record["clockInTime"] = attendance.clockInTime
+            record["clockOutTime"] = attendance.clockOutTime
+            record["status"] = attendance.status.recordValue
+            
+            updatedAttendance.record = record
         }
+        
+        // Store in local dictionary
+        localAttendanceRecords[attendance.id] = updatedAttendance
+        
+        return updatedAttendance
     }
     
-    // Fetch attendance records for a mentee
+    // Fetch attendance records for a mentee from local storage
     func fetchAttendanceRecords(for menteeID: UUID) async throws -> [AttendanceRecordCK] {
-        let predicate = NSPredicate(format: "\(AttendanceKeys.menteeID) == %@", menteeID.uuidString)
-        let query = CKQuery(recordType: RecordType.attendance, predicate: predicate)
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query)
-            var attendanceRecords: [AttendanceRecordCK] = []
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let attendance = record.toAttendanceRecord() {
-                        attendanceRecords.append(attendance)
-                    }
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                }
-            }
-            
-            return attendanceRecords.sorted(by: { $0.date.compare($1.date) == .orderedDescending })
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        let records = localAttendanceRecords.values.filter { $0.menteeID == menteeID }
+        return records.sorted(by: { $0.date.compare($1.date) == .orderedDescending })
     }
     
-    // Fetch attendance records by date range
+    // Fetch attendance records by date range from local storage
     func fetchAttendanceRecords(from startDate: Date, to endDate: Date) async throws -> [AttendanceRecordCK] {
-        let predicate = NSPredicate(format: "\(AttendanceKeys.date) >= %@ AND \(AttendanceKeys.date) <= %@", startDate as NSDate, endDate as NSDate)
-        let query = CKQuery(recordType: RecordType.attendance, predicate: predicate)
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query)
-            var attendanceRecords: [AttendanceRecordCK] = []
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let attendance = record.toAttendanceRecord() {
-                        attendanceRecords.append(attendance)
-                    }
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                }
-            }
-            
-            return attendanceRecords.sorted(by: { $0.date.compare($1.date) == .orderedAscending })
-        } catch {
-            throw CloudKitError.unexpectedError(error)
+        let records = localAttendanceRecords.values.filter { record in
+            let recordDate = record.date
+            return recordDate >= startDate && recordDate <= endDate
         }
+        return records.sorted(by: { $0.date.compare($1.date) == .orderedAscending })
     }
     
-    // Update attendance record
+    // Update attendance record in local storage
     func updateAttendance(_ attendance: AttendanceRecordCK) async throws -> AttendanceRecordCK {
-        guard let record = attendance.record else {
+        guard let _ = localAttendanceRecords[attendance.id] else {
             throw CloudKitError.recordNotFound
         }
         
-        // Update record with new values
-        record[AttendanceKeys.date] = attendance.date
-        record[AttendanceKeys.clockInTime] = attendance.clockInTime
-        record[AttendanceKeys.clockOutTime] = attendance.clockOutTime
-        record[AttendanceKeys.status] = attendance.status.recordValue
+        // Update in local storage
+        localAttendanceRecords[attendance.id] = attendance
         
-        if let location = attendance.location {
-            record[AttendanceKeys.location] = location
-        }
-        
-        do {
-            let updatedRecord = try await privateDB.save(record)
-            var updatedAttendance = attendance
-            updatedAttendance.record = updatedRecord
-            return updatedAttendance
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        return attendance
     }
     
-    // Delete attendance record
+    // Delete attendance record from local storage
     func deleteAttendance(_ attendance: AttendanceRecordCK) async throws {
-        guard let recordID = attendance.record?.recordID else {
+        guard localAttendanceRecords[attendance.id] != nil else {
             throw CloudKitError.recordNotFound
         }
         
-        do {
-            try await privateDB.deleteRecord(withID: recordID)
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        // Remove from local storage
+        localAttendanceRecords.removeValue(forKey: attendance.id)
     }
     
     // MARK: - Mentee Operations
     
-    // Save mentee
+    // Save mentee to local storage
     func saveMentee(_ mentee: MenteeCK) async throws -> MenteeCK {
-        let record = CKRecord(mentee: mentee)
+        var updatedMentee = mentee
         
-        do {
-            let savedRecord = try await privateDB.save(record)
-            var updatedMentee = mentee
-            updatedMentee.record = savedRecord
-            return updatedMentee
-        } catch {
-            throw CloudKitError.unexpectedError(error)
+        // If this is a new record, generate a CKRecord-like object
+        if updatedMentee.record == nil {
+            let record = CKRecord(recordType: "Mentee")
+            record["id"] = mentee.id.uuidString
+            record["name"] = mentee.name
+            record["email"] = mentee.email
+            record["phone"] = mentee.phone
+            record["progress"] = mentee.progress
+            
+            if let monitorID = mentee.monitorID {
+                record["monitorID"] = monitorID.uuidString
+            }
+            
+            updatedMentee.record = record
         }
+        
+        // Store in local dictionary
+        localMenteeRecords[mentee.id] = updatedMentee
+        
+        return updatedMentee
     }
     
-    // Fetch all mentees
+    // Fetch all mentees from local storage
     func fetchAllMentees() async throws -> [MenteeCK] {
-        let query = CKQuery(recordType: RecordType.mentee, predicate: NSPredicate(value: true))
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query)
-            var mentees: [MenteeCK] = []
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let mentee = record.toMentee() {
-                        mentees.append(mentee)
-                    }
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                }
-            }
-            
-            return mentees.sorted(by: { $0.name < $1.name })
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        let mentees = Array(localMenteeRecords.values)
+        return mentees.sorted(by: { $0.name < $1.name })
     }
     
-    // Fetch mentees for monitor
+    // Fetch mentees for monitor from local storage
     func fetchMentees(for monitorID: UUID) async throws -> [MenteeCK] {
-        let predicate = NSPredicate(format: "\(MenteeKeys.monitorID) == %@", monitorID.uuidString)
-        let query = CKQuery(recordType: RecordType.mentee, predicate: predicate)
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query)
-            var mentees: [MenteeCK] = []
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let mentee = record.toMentee() {
-                        mentees.append(mentee)
-                    }
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                }
-            }
-            
-            return mentees.sorted(by: { $0.name < $1.name })
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        let mentees = localMenteeRecords.values.filter { $0.monitorID == monitorID }
+        return mentees.sorted(by: { $0.name < $1.name })
     }
     
-    // Update mentee
+    // Update mentee in local storage
     func updateMentee(_ mentee: MenteeCK) async throws -> MenteeCK {
-        guard let record = mentee.record else {
+        guard localMenteeRecords[mentee.id] != nil else {
             throw CloudKitError.recordNotFound
         }
         
-        record[MenteeKeys.name] = mentee.name
-        record[MenteeKeys.email] = mentee.email
-        record[MenteeKeys.phone] = mentee.phone
-        record[MenteeKeys.progress] = mentee.progress
+        // Update in local storage
+        localMenteeRecords[mentee.id] = mentee
         
-        if let monitorID = mentee.monitorID {
-            record[MenteeKeys.monitorID] = monitorID.uuidString
-        } else {
-            record[MenteeKeys.monitorID] = nil
-        }
-        
-        do {
-            let updatedRecord = try await privateDB.save(record)
-            var updatedMentee = mentee
-            updatedMentee.record = updatedRecord
-            return updatedMentee
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        return mentee
     }
     
-    // Delete mentee
+    // Delete mentee from local storage
     func deleteMentee(_ mentee: MenteeCK) async throws {
-        guard let recordID = mentee.record?.recordID else {
+        guard localMenteeRecords[mentee.id] != nil else {
             throw CloudKitError.recordNotFound
         }
         
-        do {
-            try await privateDB.deleteRecord(withID: recordID)
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        // Remove from local storage
+        localMenteeRecords.removeValue(forKey: mentee.id)
     }
     
     // MARK: - User Operations
     
-    // Save user
+    // Save user to local storage
     func saveUser(_ user: UserCK) async throws -> UserCK {
-        let record = CKRecord(user: user)
+        var updatedUser = user
         
-        do {
-            let savedRecord = try await privateDB.save(record)
-            var updatedUser = user
-            updatedUser.record = savedRecord
-            return updatedUser
-        } catch {
-            throw CloudKitError.unexpectedError(error)
+        // If this is a new record, generate a CKRecord-like object
+        if updatedUser.record == nil {
+            let record = CKRecord(recordType: "User")
+            record["id"] = user.id.uuidString
+            record["name"] = user.name
+            record["email"] = user.email
+            record["phone"] = user.phone
+            record["role"] = user.role.recordValue
+            record["status"] = user.status.recordValue
+            record["vacationDays"] = user.vacationDays
+            record["timeOffBalance"] = user.timeOffBalance
+            
+            updatedUser.record = record
         }
+        
+        // Store in local dictionary
+        localUserRecords[user.id] = updatedUser
+        
+        return updatedUser
     }
     
-    // Fetch user by ID
+    // Fetch user by ID from local storage
     func fetchUser(with id: UUID) async throws -> UserCK? {
-        let predicate = NSPredicate(format: "\(UserKeys.id) == %@", id.uuidString)
-        let query = CKQuery(recordType: RecordType.user, predicate: predicate)
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query, resultsLimit: 1)
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    return record.toUser()
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                    return nil
-                }
-            }
-            
-            return nil
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        return localUserRecords[id]
     }
     
-    // Fetch all users
+    // Fetch all users from local storage
     func fetchAllUsers() async throws -> [UserCK] {
-        let query = CKQuery(recordType: RecordType.user, predicate: NSPredicate(value: true))
-        
-        do {
-            let (results, _) = try await privateDB.records(matching: query)
-            var users: [UserCK] = []
-            
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let user = record.toUser() {
-                        users.append(user)
-                    }
-                case .failure(let error):
-                    print("Error fetching record: \(error)")
-                }
-            }
-            
-            return users.sorted(by: { $0.name < $1.name })
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        let users = Array(localUserRecords.values)
+        return users.sorted(by: { $0.name < $1.name })
     }
     
-    // Update user
+    // Update user in local storage
     func updateUser(_ user: UserCK) async throws -> UserCK {
-        guard let record = user.record else {
+        guard localUserRecords[user.id] != nil else {
             throw CloudKitError.recordNotFound
         }
         
-        record[UserKeys.name] = user.name
-        record[UserKeys.email] = user.email
-        record[UserKeys.phone] = user.phone
-        record[UserKeys.role] = user.role.recordValue
-        record[UserKeys.status] = user.status.recordValue
-        record[UserKeys.vacationDays] = user.vacationDays
-        record[UserKeys.timeOffBalance] = user.timeOffBalance
+        // Update in local storage
+        localUserRecords[user.id] = user
         
-        do {
-            let updatedRecord = try await privateDB.save(record)
-            var updatedUser = user
-            updatedUser.record = updatedRecord
-            return updatedUser
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        return user
     }
     
-    // Delete user
+    // Delete user from local storage
     func deleteUser(_ user: UserCK) async throws {
-        guard let recordID = user.record?.recordID else {
+        guard localUserRecords[user.id] != nil else {
             throw CloudKitError.recordNotFound
         }
         
-        do {
-            try await privateDB.deleteRecord(withID: recordID)
-        } catch {
-            throw CloudKitError.unexpectedError(error)
-        }
+        // Remove from local storage
+        localUserRecords.removeValue(forKey: user.id)
     }
 }
-
-

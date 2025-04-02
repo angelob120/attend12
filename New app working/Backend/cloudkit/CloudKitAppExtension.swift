@@ -3,7 +3,7 @@
 //  New app working
 //
 //  Created by AB on 3/26/25.
-//
+//  Modified to work without iCloud
 
 import SwiftUI
 
@@ -11,7 +11,7 @@ import SwiftUI
 extension New_app_workingApp {
     /// Configure CloudKit during app startup
     func configureCloudKit() {
-        // Start asynchronous initialization
+        // Start asynchronous initialization without requiring iCloud
         Task {
             await CloudKitAppConfig.shared.initializeApp()
         }
@@ -32,12 +32,14 @@ struct LoadingView: View {
                 .font(.headline)
             
             if !cloudKitConfig.isCloudKitAvailable {
-                Text("Please sign in to iCloud in Settings to use this app.")
+                // This is now a fallback message, but with the modified code,
+                // isCloudKitAvailable should always be true
+                Text("Continuing in offline mode...")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding()
                 
-                Button("Retry") {
+                Button("Continue") {
                     Task {
                         await cloudKitConfig.initializeApp()
                     }

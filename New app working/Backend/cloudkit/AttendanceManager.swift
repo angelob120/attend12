@@ -359,8 +359,9 @@ class AttendanceManager: ObservableObject {
         formatter.dateFormat = "MM-dd-yyyy"
         let dateString = formatter.string(from: today)
         
-        // Check if the code matches today's date or is the valid numeric code
-        return code == dateString || code == "9146"
+        // Check if the code matches today's date or is one of the valid numeric codes
+        // "0000" is specifically for manual clock in
+        return code == dateString || code == "9146" || code == "0000"
     }
     
     /// Get the current clock status for display
