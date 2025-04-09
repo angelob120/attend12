@@ -1,3 +1,4 @@
+//
 //  Mentee.swift
 //  New app working
 //
@@ -19,12 +20,13 @@ struct Mentee: Identifiable {
 struct AttendanceRecord: Identifiable {
     let id = UUID()
     let date: Date
-    let status: AttendanceStatus
+    let status: AppAttendanceStatus
     let clockInTime: Date
     let clockOutTime: Date
 }
 
-enum AttendanceStatus: CaseIterable {
+// Use a unique name to avoid conflicts
+enum AppAttendanceStatus: CaseIterable {
     case present
     case absent
     case tardy
@@ -38,7 +40,7 @@ func generateMonthlyAttendanceData(for month: Date) -> [AttendanceRecord] {
 
     for day in 1...totalDays {
         if let date = month.dateBySetting(day: day), !calendar.isDateInWeekend(date) {
-            let randomStatus = AttendanceStatus.allCases.randomElement()!
+            let randomStatus = AppAttendanceStatus.allCases.randomElement()!
             let clockInTime = calendar.date(bySettingHour: 9, minute: Int.random(in: 0...59), second: 0, of: date) ?? date
             let clockOutTime = calendar.date(bySettingHour: 17, minute: Int.random(in: 0...59), second: 0, of: date) ?? date
             

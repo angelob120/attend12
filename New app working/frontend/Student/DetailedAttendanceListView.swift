@@ -18,6 +18,7 @@ struct AttendanceEntry: Identifiable, Hashable {
 struct DetailedAttendanceListView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedDate: Date = Date()
+    @State private var attendanceData: [String: [AttendanceEntry]] = [:]
     private let calendar = Calendar.current
 
     var body: some View {
@@ -79,7 +80,7 @@ struct DetailedAttendanceListView: View {
             // Hour-by-Week List
             List {
                 ForEach(1..<6) { week in
-                    NavigationLink(destination: WeekDetailView(month: monthYearString(from: selectedDate), week: week)) {
+                    NavigationLink(destination: WeekDetailView(month: monthYearString(from: selectedDate), week: week, entries: attendanceData["\(monthYearString(from: selectedDate))-\(week)"] ?? [])) {
                         HStack {
                             Circle()
                                 .stroke(Color.white, lineWidth: 2)
@@ -105,6 +106,79 @@ struct DetailedAttendanceListView: View {
         .background(Color(.systemBackground))
         .navigationTitle("Detailed Attendance")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            generateAttendanceData()
+        }
+        .onChange(of: selectedDate) { _ in
+            generateAttendanceData()
+        }
+    }
+    
+    // MARK: - Attendance Data Generation
+    
+    private func generateAttendanceData() {
+        attendanceData.removeAll()
+        
+        // Generate data for all months from the past to today
+        var currentMonth = earliestMonth()
+        let today = Date()
+        
+        while currentMonth <= today {
+            // Generate data for each week
+            for week in 1...5 {
+                let monthWeekKey = "\(monthYearString(from: currentMonth))-\(week)"
+                attendanceData[monthWeekKey] = generateWeekData(for: currentMonth, week: week)
+            }
+            
+            // Move to next month
+            currentMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth)!
+        }
+    }
+    
+    private func earliestMonth() -> Date {
+        var dateComponents = DateComponents()
+        dateComponents.year = 2024
+        dateComponents.month = 12
+        dateComponents.day = 1
+        return calendar.date(from: dateComponents)!
+    }
+    
+    private func generateWeekData(for month: Date, week: Int) -> [AttendanceEntry] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MMM d"
+        
+        // Calculate the start of the week
+        var weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: month.addingTimeInterval(TimeInterval(week - 1) * 7 * 24 * 3600)))!
+        
+        var weekEntries: [AttendanceEntry] = []
+        var workdayCount = 0
+        
+        // Generate 5 workdays with 4-hour shifts
+        for _ in 0..<7 {
+            // Skip weekends
+            if !calendar.isDateInWeekend(weekStart) {
+                // 90-99% attendance rate
+                if Double.random(in: 0...1) > 0.1 {
+                    let hoursWorked = 4.0
+                    let hours = String(format: "%.0f hours, 0 minutes", hoursWorked)
+                    weekEntries.append(AttendanceEntry(
+                        date: dateFormatter.string(from: weekStart),
+                        hours: hours
+                    ))
+                    workdayCount += 1
+                }
+            }
+            
+            // Move to next day
+            weekStart = calendar.date(byAdding: .day, value: 1, to: weekStart)!
+            
+            // Stop if we've generated 5 workdays
+            if workdayCount == 5 {
+                break
+            }
+        }
+        
+        return weekEntries
     }
     
     // MARK: - Helper Functions
@@ -116,33 +190,31 @@ struct DetailedAttendanceListView: View {
     }
     
     func totalHours(for date: Date) -> String {
-        let monthYear = monthYearString(from: date)
-        switch monthYear {
-        case "January 2025":
-            return "14 hours, 3 minutes"
-        case "December 2024":
-            return "32 hours, 47 minutes"
-        default:
-            return "0 hours, 0 minutes"
+        let monthKey = monthYearString(from: date)
+        var totalMinutes = 0
+        
+        // Sum hours for all weeks in the month
+        for week in 1...5 {
+            let weekKey = "\(monthKey)-\(week)"
+            if let weekEntries = attendanceData[weekKey] {
+                totalMinutes += weekEntries.count * 240 // 4 hours = 240 minutes
+            }
         }
+        
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        
+        return "\(hours) hours, \(minutes) minutes"
     }
     
     func weeklyHours(for date: Date, week: Int) -> String {
-        let monthYear = monthYearString(from: date)
-        switch (monthYear, week) {
-        case ("January 2025", 2):
-            return "11 hours, 44 minutes"
-        case ("January 2025", 3):
-            return "2 hours, 19 minutes"
-        case ("December 2024", 1):
-            return "10 hours, 32 minutes"
-        case ("December 2024", 2):
-            return "15 hours, 10 minutes"
-        case ("December 2024", 3):
-            return "7 hours, 4 minutes"
-        default:
+        let monthKey = "\(monthYearString(from: date))-\(week)"
+        
+        guard let weekEntries = attendanceData[monthKey], !weekEntries.isEmpty else {
             return "0 hours, 0 minutes"
         }
+        
+        return "\(weekEntries.count * 4) hours, 0 minutes"
     }
 }
 
@@ -150,6 +222,7 @@ struct DetailedAttendanceListView: View {
 struct WeekDetailView: View {
     let month: String
     let week: Int
+    let entries: [AttendanceEntry]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -166,15 +239,20 @@ struct WeekDetailView: View {
             Divider()
             
             // Detailed attendance data
-            ForEach(weekDetails(for: month, week: week)) { entry in
-                HStack {
-                    Text(entry.date)
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Text(entry.hours)
-                        .font(.subheadline)
-                        .foregroundColor(.customGreen)
+            if entries.isEmpty {
+                Text("No attendance data")
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(entries) { entry in
+                    HStack {
+                        Text(entry.date)
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text(entry.hours)
+                            .font(.subheadline)
+                            .foregroundColor(.customGreen)
+                    }
                 }
             }
             
@@ -183,31 +261,6 @@ struct WeekDetailView: View {
         .padding()
         .background(Color(.systemBackground))
         .navigationTitle("Week \(week) Details")
-    }
-    
-    // MARK: - Helper Function for Detailed Data
-    func weekDetails(for month: String, week: Int) -> [AttendanceEntry] {
-        switch (month, week) {
-        case ("January 2025", 2):
-            return [
-                AttendanceEntry(date: "Jan 8", hours: "3 hours, 15 minutes"),
-                AttendanceEntry(date: "Jan 9", hours: "4 hours, 30 minutes"),
-                AttendanceEntry(date: "Jan 10", hours: "4 hours, 0 minutes")
-            ]
-        case ("January 2025", 3):
-            return [
-                AttendanceEntry(date: "Jan 15", hours: "1 hour, 10 minutes"),
-                AttendanceEntry(date: "Jan 16", hours: "1 hour, 9 minutes")
-            ]
-        case ("December 2024", 1):
-            return [
-                AttendanceEntry(date: "Dec 1", hours: "3 hours, 0 minutes"),
-                AttendanceEntry(date: "Dec 2", hours: "4 hours, 0 minutes"),
-                AttendanceEntry(date: "Dec 3", hours: "3 hours, 32 minutes")
-            ]
-        default:
-            return [AttendanceEntry(date: "No data", hours: "0 hours, 0 minutes")]
-        }
     }
 }
 

@@ -1,20 +1,48 @@
 //
 //  ContentView.swift
-//  ATTEn
+//  New app working
 //
 //  Created by AB on 11/1/24.
 //
 
-
 import SwiftUI
 
-enum UserRole {
+enum UserRole: String, CaseIterable {
     case student
     case mentor
     case admin
     case ipad
     case onboarding
     case test
+    
+    // Helper for icon name
+    var iconName: String {
+        switch self {
+        case .student: return "graduationcap.fill"
+        case .mentor: return "person.2.fill"
+        case .admin: return "shield.fill"
+        case .ipad: return "display.fill"
+        case .onboarding: return "person.badge.plus.fill"
+        case .test: return "hammer.fill"
+        }
+    }
+    
+    // Helper for display name
+    var displayName: String {
+        return self.rawValue.capitalized
+    }
+    
+    // Helper for role color
+    var color: Color {
+        switch self {
+        case .student: return .blue
+        case .mentor: return .green
+        case .admin: return .red
+        case .ipad: return .orange
+        case .onboarding: return .purple
+        case .test: return .pink
+        }
+    }
 }
 
 struct ContentView: View {
@@ -22,8 +50,15 @@ struct ContentView: View {
     @State private var selectedRole: UserRole = .student  // Default role
 
     var body: some View {
-        VStack {
-            roleBasedTabView()
+        TabView(selection: $selectedRole) {
+            // Create a tab for each role
+            ForEach(UserRole.allCases, id: \.self) { role in
+                roleView(for: role)
+                    .tabItem {
+                        Label(role.displayName, systemImage: role.iconName)
+                    }
+                    .tag(role)
+            }
         }
         .accentColor(.blue)
         .onAppear {
@@ -48,148 +83,60 @@ struct ContentView: View {
     }
     
     @ViewBuilder
-    private func roleBasedTabView() -> some View {
-        TabView {
-            switch selectedRole {
-            case .student:
-                StudentDashboardView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                        Text("Dashboard")
-                    }
-            case .mentor:
-                MentorProfileView()
-                    .tabItem {
-                        Image(systemName: "person.fill")
-                        Text("Profile")
-                    }
-            case .admin:
-                AdminDashboardView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                        Text("Dashboard")
-                    }
-            case .onboarding:
-                // We should never reach here since onboarding is handled at the app level
-                // But just in case, include a proper implementation
-                OnboardingView(onboardingComplete: { user in
-                    // Update the role based on the completed user
-                    if let role = user.record?["role"] as? String {
-                        switch role {
-                        case "admin":
-                            selectedRole = .admin
-                        case "mentor":
-                            selectedRole = .mentor
-                        default:
-                            selectedRole = .student
-                        }
-                    } else {
+    private func roleView(for role: UserRole) -> some View {
+        switch role {
+        case .student:
+            StudentDashboardView()
+        case .mentor:
+            MentorProfileView()
+        case .admin:
+            AdminDashboardView()
+        case .onboarding:
+            // We should never reach here since onboarding is handled at the app level
+            // But just in case, include a proper implementation
+            OnboardingView(onboardingComplete: { user in
+                // Update the role based on the completed user
+                if let role = user.record?["role"] as? String {
+                    switch role {
+                    case "admin":
+                        selectedRole = .admin
+                    case "mentor":
+                        selectedRole = .mentor
+                    default:
                         selectedRole = .student
                     }
-                })
-                .tabItem {
-                    Image(systemName: "house.fill")
-                    Text("Onboarding")
+                } else {
+                    selectedRole = .student
                 }
-            case .ipad:
-                iPadDashboardView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                        Text("Dashboard")
-                    }
-            
-            case .test:
-                TestView()
-                    .tabItem {
-                        Image(systemName: "house.fill")
-                        Text("Dashboard")
-                    }
-            }
-            
-            
-            SwitchRoleView(selectedRole: $selectedRole)
-                .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Switch Role")
-                }
-        
+            })
+        case .ipad:
+            iPadDashboardView()
+        case .test:
+            TestView()
         }
     }
 }
 
-struct SwitchRoleView: View {
-    @Binding var selectedRole: UserRole
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+// Status Banner to show at top of each role view
+struct RoleStatusBanner: View {
+    let role: UserRole
     
     var body: some View {
-        VStack {
-            Text("Switch Role")
-                .font(.largeTitle)
-                .padding()
+        HStack {
+            Circle()
+                .fill(role.color)
+                .frame(width: 12, height: 12)
             
-            // Cloud status indicator
-            HStack {
-                Circle()
-                    .fill(cloudKitConfig.isCloudKitAvailable ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
-                
-                Text(cloudKitConfig.isCloudKitAvailable ? "iCloud Connected" : "iCloud Disconnected")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 20)
-            
-            Button("Switch to Student") {
-                selectedRole = .student
-            }
-            .padding()
-            .background(Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            
-            Button("Switch to Mentor") {
-                selectedRole = .mentor
-            }
-            .padding()
-            .background(Color.green)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            
-            Button("Switch to Admin") {
-                selectedRole = .admin
-            }
-            .padding()
-            .background(Color.red)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            
-            Button("Switch to iPad") {
-                selectedRole = .ipad
-            }
-            .padding()
-            .background(Color.orange)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            
-            Button("Switch to onboarding") {
-                selectedRole = .onboarding
-            }
-            .padding()
-            .background(Color.purple)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            
-            Button("Switch to test") {
-                selectedRole = .test
-            }
-            .padding()
-            .background(Color.pink)
-            .foregroundColor(.white)
-            .cornerRadius(8)
+            Text("Active Role: \(role.displayName)")
+                .font(.caption)
+                .bold()
+                .foregroundColor(role.color)
             
             Spacer()
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(role.color.opacity(0.1))
     }
 }
 

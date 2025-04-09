@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-
 // MARK: - Custom Triangle Shape
 struct Triangle: Shape {
     func path(in rect: CGRect) -> Path {
@@ -24,6 +23,16 @@ struct DetailedCalendarView: View {
     @Environment(\.colorScheme) var colorScheme
     // currentDate represents the month being displayed.
     @State private var currentDate = Date()
+    
+    // State for attendance data
+    @State private var attendanceData: [Date: AttendanceType] = [:]
+    
+    // Enum to represent attendance types
+    enum AttendanceType {
+        case present
+        case tardy
+        case absent
+    }
     
     // State variables for presenting sheets (pop-ups)
     @State private var showAlertSheet: Bool = false
@@ -73,18 +82,26 @@ struct DetailedCalendarView: View {
                             ForEach(0..<7, id: \.self) { column in
                                 if let dayDate = weeks[row][column] {
                                     let dayNumber = Calendar.current.component(.day, from: dayDate)
-                                    ZStack {
-                                        if Calendar.current.isDateInToday(dayDate) {
-                                            Circle()
-                                                .foregroundColor(.customGreen)
-                                                .frame(width: 35, height: 35)
-                                                .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
+                                    
+                                    VStack(spacing: 2) {
+                                        ZStack {
+                                            if Calendar.current.isDateInToday(dayDate) {
+                                                Circle()
+                                                    .foregroundColor(.customGreen)
+                                                    .frame(width: 35, height: 35)
+                                                    .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
+                                            }
+                                            
+                                            Text("\(dayNumber)")
+                                                .foregroundColor(Calendar.current.isDateInToday(dayDate) ? .white : .primary)
+                                                .font(.headline)
                                         }
-                                        Text("\(dayNumber)")
-                                            .foregroundColor(Calendar.current.isDateInToday(dayDate) ? .white : .primary)
-                                            .font(.headline)
+                                        .frame(width: 40, height: 35)
+                                        
+                                        // Attendance icon
+                                        attendanceIcon(for: dayDate)
+                                            .frame(width: 15, height: 15)
                                     }
-                                    .frame(width: 40, height: 40)
                                 } else {
                                     // Empty cell for dates outside the current month.
                                     Spacer()
@@ -124,9 +141,6 @@ struct DetailedCalendarView: View {
                 
                 // MARK: - Action Buttons (Sheet Triggers)
                 VStack(spacing: 10) {
-                    Button(action: { showAlertSheet = true }) {
-                        ActionButton(label: "Alert time off", color: .customGreen)
-                    }
                     Button(action: { showTimeOffSheet = true }) {
                         ActionButton(label: "Time Off Details", color: .customGreen)
                     }
@@ -144,6 +158,103 @@ struct DetailedCalendarView: View {
         .sheet(isPresented: $showTimeOffSheet) {
             DetailedAttendanceListView()
         }
+        .onAppear {
+            generateAttendanceData()
+        }
+        .onChange(of: currentDate) { _ in
+            generateAttendanceData()
+        }
+    }
+    
+    // MARK: - Attendance Data Generation
+    
+    /// Generate random attendance data for the current month
+    private func generateAttendanceData() {
+        // Reset attendance data
+        attendanceData.removeAll()
+        
+        let calendar = Calendar.current
+        
+        // Get the first and last day of the month
+        guard let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)),
+              let lastOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: firstOfMonth) else {
+            return
+        }
+        
+        // Generate data from first of month to today or last of month
+        var currentDay = firstOfMonth
+        let latestDay = min(lastOfMonth, Date())
+        
+        // Track number of absences to limit to max 5
+        var absenceCount = 0
+        
+        while currentDay <= latestDay {
+            // Skip weekends
+            if !calendar.isDateInWeekend(currentDay) {
+                // Determine attendance type
+                let attendanceType: AttendanceType
+                
+                // Limit absences to max 5
+                if absenceCount < 5 && shouldBeAbsent() {
+                    attendanceType = .absent
+                    absenceCount += 1
+                }
+                // Small chance of being tardy
+                else if shouldBeTardy() {
+                    attendanceType = .tardy
+                }
+                // Otherwise present
+                else {
+                    attendanceType = .present
+                }
+                
+                attendanceData[currentDay] = attendanceType
+            }
+            
+            // Move to next day
+            currentDay = calendar.date(byAdding: .day, value: 1, to: currentDay)!
+        }
+    }
+    
+    // New method to generate attendance icon
+    private func attendanceIcon(for date: Date) -> some View {
+        guard let attendanceType = attendanceData[date],
+              !Calendar.current.isDateInWeekend(date) else {
+            return AnyView(EmptyView())
+        }
+        
+        switch attendanceType {
+        case .present:
+            return AnyView(
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 10, height: 10)
+            )
+        case .tardy:
+            return AnyView(
+                Triangle()
+                    .fill(Color.yellow)
+                    .frame(width: 10, height: 10)
+            )
+        case .absent:
+            return AnyView(
+                Rectangle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+            )
+        }
+    }
+    
+    /// Probabilistic method to determine if a day should be an absence
+    private func shouldBeAbsent() -> Bool {
+        // Low probability of absence
+        return Double.random(in: 0...1) < 0.1 // 10% chance
+    }
+    
+    /// Probabilistic method to determine if a day should be tardy
+    private func shouldBeTardy() -> Bool {
+        // Low probability of tardiness
+        return Double.random(in: 0...1) < 0.15 // 15% chance
     }
     
     // MARK: - Helper Functions

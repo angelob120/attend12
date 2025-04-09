@@ -40,7 +40,7 @@ struct AttendanceCalendarView: View {
             
             // MARK: - Weekday Headers
             HStack {
-                ForEach(weekdays, id: \ .self) { day in
+                ForEach(weekdays, id: \.self) { day in
                     Text(day)
                         .font(.subheadline)
                         .bold()
@@ -55,9 +55,9 @@ struct AttendanceCalendarView: View {
             let weeks = Int(ceil(Double(totalCells) / 7.0))
             
             VStack(spacing: 10) {
-                ForEach(0..<weeks, id: \ .self) { week in
+                ForEach(0..<weeks, id: \.self) { week in
                     HStack(spacing: 10) {
-                        ForEach(0..<7, id: \ .self) { day in
+                        ForEach(0..<7, id: \.self) { day in
                             let dayNumber = week * 7 + day - firstWeekday + 2
                             
                             if dayNumber > 0 && dayNumber <= daysInMonth {
@@ -115,11 +115,11 @@ struct AttendanceCalendarView: View {
         }
     }
     
-    private func attendanceStatus(for date: Date) -> AttendanceStatus? {
+    private func attendanceStatus(for date: Date) -> AppAttendanceStatus? {
         return attendanceRecords.first { Calendar.current.isDate($0.date, inSameDayAs: date) }?.status
     }
     
-    private func color(for status: AttendanceStatus?) -> Color {
+    private func color(for status: AppAttendanceStatus?) -> Color {
         switch status {
         case .present:
             return .blue
@@ -127,7 +127,7 @@ struct AttendanceCalendarView: View {
             return .red
         case .tardy:
             return .yellow
-        default:
+        case nil:
             return .gray.opacity(0.3)
         }
     }
