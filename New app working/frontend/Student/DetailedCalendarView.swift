@@ -34,9 +34,13 @@ struct DetailedCalendarView: View {
         case absent
     }
     
-    // State variables for presenting sheets (pop-ups)
+    // Existing sheet states for other actions
     @State private var showAlertSheet: Bool = false
     @State private var showTimeOffSheet: Bool = false
+    
+    // New state variables for handling day tap to show clock in/out times.
+    @State private var selectedDay: Date? = nil
+    @State private var showTimeSheet: Bool = false
     
     var body: some View {
         ScrollView {
@@ -81,26 +85,30 @@ struct DetailedCalendarView: View {
                         HStack(spacing: 10) {
                             ForEach(0..<7, id: \.self) { column in
                                 if let dayDate = weeks[row][column] {
-                                    let dayNumber = Calendar.current.component(.day, from: dayDate)
-                                    
-                                    VStack(spacing: 2) {
-                                        ZStack {
-                                            if Calendar.current.isDateInToday(dayDate) {
-                                                Circle()
-                                                    .foregroundColor(.customGreen)
-                                                    .frame(width: 35, height: 35)
-                                                    .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
+                                    // Wrap each day cell in a Button so that when tapped it will open the time sheet.
+                                    Button(action: {
+                                        selectedDay = dayDate
+                                        showTimeSheet = true
+                                    }) {
+                                        let dayNumber = Calendar.current.component(.day, from: dayDate)
+                                        VStack(spacing: 2) {
+                                            ZStack {
+                                                if Calendar.current.isDateInToday(dayDate) {
+                                                    Circle()
+                                                        .foregroundColor(.customGreen)
+                                                        .frame(width: 35, height: 35)
+                                                        .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
+                                                }
+                                                Text("\(dayNumber)")
+                                                    .foregroundColor(Calendar.current.isDateInToday(dayDate) ? .white : .primary)
+                                                    .font(.headline)
                                             }
+                                            .frame(width: 40, height: 35)
                                             
-                                            Text("\(dayNumber)")
-                                                .foregroundColor(Calendar.current.isDateInToday(dayDate) ? .white : .primary)
-                                                .font(.headline)
+                                            // Attendance icon
+                                            attendanceIcon(for: dayDate)
+                                                .frame(width: 15, height: 15)
                                         }
-                                        .frame(width: 40, height: 35)
-                                        
-                                        // Attendance icon
-                                        attendanceIcon(for: dayDate)
-                                            .frame(width: 15, height: 15)
                                     }
                                 } else {
                                     // Empty cell for dates outside the current month.
@@ -139,7 +147,7 @@ struct DetailedCalendarView: View {
                 .cornerRadius(10)
                 .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
                 
-                // MARK: - Action Buttons (Sheet Triggers)
+                // MARK: - Action Buttons (Sheet Triggers for other actions)
                 VStack(spacing: 10) {
                     Button(action: { showTimeOffSheet = true }) {
                         ActionButton(label: "Time Off Details", color: .customGreen)
@@ -151,12 +159,17 @@ struct DetailedCalendarView: View {
         .navigationTitle("Calendar Details")
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(.systemBackground))
-        // Sheet modifiers for pop-up views
+        // Existing sheet modifiers for pop-up views
         .sheet(isPresented: $showAlertSheet) {
             RequestTimeOffView()
         }
         .sheet(isPresented: $showTimeOffSheet) {
             DetailedAttendanceListView()
+        }
+        // New sheet for clock in/out times
+        .sheet(isPresented: $showTimeSheet) {
+            // Pass the selected day to the time attendance sheet (use current Date as fallback)
+            AttendanceTimeSheet(selectedDay: selectedDay ?? Date())
         }
         .onAppear {
             generateAttendanceData()
@@ -393,5 +406,70 @@ struct DetailedCalendarView_Previews: PreviewProvider {
             }
             .preferredColorScheme(.light)
         }
+    }
+}
+
+// MARK: - New AttendanceTimeSheet View
+/// This view appears when a day is tapped on the calendar.
+/// It displays a DatePicker for both clock‑in and clock‑out times.
+/// The clock‑out DatePicker’s selectable range is restricted to a maximum of 4 hours after clock‑in.
+struct AttendanceTimeSheet: View {
+    let selectedDay: Date
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var clockIn: Date
+    @State private var clockOut: Date
+    
+    init(selectedDay: Date) {
+        self.selectedDay = selectedDay
+        let calendar = Calendar.current
+        // Create a default clock-in time (e.g., at 9:00 AM on the selected day)
+        var components = calendar.dateComponents([.year, .month, .day], from: selectedDay)
+        components.hour = 9
+        components.minute = 0
+        let defaultClockIn = calendar.date(from: components) ?? selectedDay
+        let defaultClockOut = defaultClockIn.addingTimeInterval(4 * 3600) // 4 hours later
+        
+        _clockIn = State(initialValue: defaultClockIn)
+        _clockOut = State(initialValue: defaultClockOut)
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Clock In Time")) {
+                    DatePicker("Clock In", selection: $clockIn, displayedComponents: [.hourAndMinute])
+                }
+                Section(header: Text("Clock Out Time (Max 4 hours later)")) {
+                    DatePicker(
+                        "Clock Out",
+                        selection: $clockOut,
+                        in: clockIn...clockIn.addingTimeInterval(4 * 3600),
+                        displayedComponents: [.hourAndMinute]
+                    )
+                }
+            }
+            // Remove .navigationTitle and add a centered title using a toolbar item
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("\(formattedDate(selectedDay))")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+    
+    // Helper function to format the selected date.
+    func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
     }
 }
