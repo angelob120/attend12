@@ -7,12 +7,15 @@
 
 import SwiftUI
 
-
 struct MentorProfileView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedTab: String = "My Mentees"  // Default tab
     @State private var searchText: String = ""             // Search text
     @StateObject private var menteeManager = MenteeManager()  // Shared data manager
+    
+    // New state for showing the add event sheet
+    @State private var isPresentingAddEventSheet = false
+    @State private var isPresentingNotifications = false
 
     // Filter mentees based on search text and selected tab
     var filteredMentees: [Mentee] {
@@ -27,7 +30,19 @@ struct MentorProfileView: View {
     var body: some View {
         NavigationView {
             VStack {
-                // MARK: - Search Bar with Custom Green Outline, adapts to Light/Dark Mode
+                // Events Section
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 15) {
+                        ForEach(Event.sampleData) { event in
+                            NavigationLink(destination: EventDetailView(event: event)) {
+                                EventRow(event: event)
+                            }
+                        }
+                    }
+                    .padding()
+                }
+                
+                // Search Bar with Custom Green Outline
                 TextField("Search Mentees...", text: $searchText)
                     .padding(10)
                     .background(colorScheme == .dark ? Color(.secondarySystemBackground) : Color(.systemBackground))
@@ -38,7 +53,7 @@ struct MentorProfileView: View {
                     .padding(.horizontal)
                     .padding(.top)
 
-                // MARK: - Mentee List (Original Style) that adapts to Light/Dark Mode
+                // Mentee List
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(filteredMentees) { mentee in
@@ -52,7 +67,7 @@ struct MentorProfileView: View {
                     .padding(.horizontal)
                 }
 
-                // MARK: - Tab Bar for "My Mentees" and "All Mentees" with Consistent Styling
+                // Tab Bar for "My Mentees" and "All Mentees"
                 HStack {
                     Button(action: {
                         selectedTab = "My Mentees"
@@ -104,10 +119,8 @@ struct MentorProfileView: View {
             .padding(.bottom)
             .background(colorScheme == .dark ? Color.black : Color(.systemBackground))
             .navigationBarTitleDisplayMode(.inline)
-            // MARK: - iOS 16+ NavBar Background Styling
             .toolbarBackground(Color.customGreen, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            // MARK: - NavBar Items
             .toolbar {
                 // Centered Title
                 ToolbarItem(placement: .principal) {
@@ -115,31 +128,40 @@ struct MentorProfileView: View {
                         .font(.headline)
                         .foregroundColor(.white)
                 }
-                // Left: Plus Symbol for Adding New Events
+                // Left: Add Event Button
                 ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: AddEventView()) {
+                    Button(action: {
+                        isPresentingAddEventSheet = true
+                    }) {
                         Image(systemName: "plus")
                             .foregroundColor(Color.iconColor)
                     }
                 }
-                // Right: Notifications (bell) icon
+                // Right: Notifications Button
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: NotificationsView()) {
+                    Button(action: {
+                        isPresentingNotifications = true
+                    }) {
                         Image(systemName: "bell")
                             .foregroundColor(Color.iconColor)
                     }
                 }
+            }
+            .sheet(isPresented: $isPresentingAddEventSheet) {
+                MentorAddEventView()
+            }
+            .sheet(isPresented: $isPresentingNotifications) {
+                MentorNotificationsView()
             }
         }
         .environmentObject(menteeManager)
     }
 }
 
-// Stub view for AddEventView (customize as needed)
-struct AddEventView: View {
-    var body: some View {
-        Text("Add New Event")
-            .font(.largeTitle)
-            .padding()
+// Preview
+struct MentorProfileView_Previews: PreviewProvider {
+    static var previews: some View {
+        MentorProfileView()
+            .environmentObject(MenteeManager())
     }
 }
