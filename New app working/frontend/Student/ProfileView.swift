@@ -3,16 +3,20 @@
 //  New app working
 //
 //  Created by AB on 1/9/25.
-//  Updated to display user data from onboarding
+//  Updated to properly navigate to individual policy views
+//
 
 import SwiftUI
 
 struct ProfileView: View {
     // Use the shared UserData to display user information
     @ObservedObject private var userData = UserData.shared
+    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
     
     // Example state for toggles, etc.
     @State private var alertPopupsOn = true
+    @State private var emailNotificationsOn = true
+    @State private var soundNotificationsOn = true
     
     // Current date formatter helper function
     private func formattedDate() -> String {
@@ -101,11 +105,36 @@ struct ProfileView: View {
                 
                 // MARK: - SETTINGS SECTIONS (Custom Green Boxes, White Text)
                 
-                // GENERAL
-                SettingsSectionView(title: "General") {
+                // PERSONAL INFORMATION
+                SettingsSectionView(title: "Personal Information") {
                     SettingsRow(iconName: "person.fill", text: userData.fullName.isEmpty ? "Not Set" : userData.fullName)
                     SettingsRow(iconName: "envelope.fill", text: userData.email.isEmpty ? "Not Set" : userData.email)
+                    SettingsRow(iconName: "phone.fill", text: cloudKitConfig.userProfile.phone.isEmpty ? "Not Set" : cloudKitConfig.userProfile.phone)
+                    SettingsRow(iconName: "person.2.fill", text: userData.mentorName.isEmpty ? "Not Assigned" : userData.mentorName, trailingText: "Mentor")
+                }
+                
+                // CLASS INFORMATION
+                SettingsSectionView(title: "Class Information") {
+                    SettingsRow(iconName: "graduationcap.fill", text: cloudKitConfig.userProfile.classType.isEmpty ? "Regular Class" : cloudKitConfig.userProfile.classType)
+                    SettingsRow(iconName: "clock.fill", text: cloudKitConfig.userProfile.timeSlot.isEmpty ? "AM" : cloudKitConfig.userProfile.timeSlot, trailingText: "Session")
+                    SettingsRow(iconName: "number", text: cloudKitConfig.userProfile.classCode.isEmpty ? "Not Set" : cloudKitConfig.userProfile.classCode, trailingText: "Code")
+                }
+                
+                // TIME OFF
+                SettingsSectionView(title: "Time Off") {
+                    SettingsRow(iconName: "calendar.badge.clock", text: "\(userData.vacationDays) Days Remaining")
+                    SettingsRow(iconName: "clock.arrow.circlepath", text: "\(userData.vacationDays * 8) Hours Total")
+                    NavigationLink(destination: DetailedAttendanceListView()) {
+                        SettingsRow(iconName: "list.bullet.clipboard", text: "View Time Off History", trailingImage: "chevron.right")
+                    }
+                }
+                
+                // ACCOUNT STATUS
+                SettingsSectionView(title: "Account Status") {
+                    SettingsRow(iconName: "person.badge.shield.checkmark", text: "Active", trailingText: Date().formatted(date: .abbreviated, time: .omitted))
                     SettingsRow(iconName: "calendar", text: formattedDate())
+                    SettingsRow(iconName: "checklist",
+                               text: cloudKitConfig.userProfile.onboardingComplete ? "Onboarding Complete" : "Onboarding In Progress")
                 }
                 
                 // NOTIFICATIONS
@@ -113,16 +142,49 @@ struct ProfileView: View {
                     ToggleSettingsRow(iconName: "bell.fill",
                                       text: "Alert pop-ups",
                                       isOn: $alertPopupsOn)
+                    ToggleSettingsRow(iconName: "envelope.fill",
+                                     text: "Email notifications",
+                                     isOn: $emailNotificationsOn)
+                    ToggleSettingsRow(iconName: "speaker.wave.2.fill",
+                                     text: "Sound notifications",
+                                     isOn: $soundNotificationsOn)
                 }
                 
                 // ABOUT
                 SettingsSectionView(title: "About") {
+                    // Updated to use dedicated view files
                     NavigationLink(destination: StudentCodeOfConductView()) {
                         SettingsRow(iconName: "doc.text.fill",
                                     text: "Student Code of Conduct",
                                     trailingImage: "chevron.right")
                     }
+                    NavigationLink(destination: PrivacyPolicyView()) {
+                        SettingsRow(iconName: "hand.raised.fill",
+                                   text: "Privacy Policy",
+                                   trailingImage: "chevron.right")
+                    }
+                    NavigationLink(destination: TermsOfServiceView()) {
+                        SettingsRow(iconName: "doc.plaintext.fill",
+                                   text: "Terms of Service",
+                                   trailingImage: "chevron.right")
+                    }
                 }
+                
+                // SIGN OUT Button
+                Button(action: {
+                    // Sign out action
+                    cloudKitConfig.resetAll()
+                }) {
+                    Text("Sign Out")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .cornerRadius(10)
+                }
+                .padding(.top)
+                .padding(.horizontal)
             }
             .padding()
         }
@@ -215,12 +277,12 @@ struct ToggleSettingsRow: View {
     }
 }
 
-// MARK: - Example Destination View
-struct StudentCodeOfConductView: View {
-    var body: some View {
-        Text("Student Code of Conduct")
-            .font(.title)
-            .padding()
-            .navigationTitle("Code of Conduct")
+// MARK: - Preview
+struct ProfileView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            ProfileView()
+                .environmentObject(CloudKitAppConfig.shared)
+        }
     }
 }

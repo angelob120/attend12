@@ -1,9 +1,15 @@
-// Update to CloudKitConfiguration.swift
+//
+//  CloudKitConfiguration.swift
+//  New app working
+//
+//  Created by AB on 3/26/25.
+//  Updated with additional fields for UserProfile
 
 import Foundation
 import SwiftUI
 import Combine
 import CloudKit
+
 
 // MARK: - CloudKit App Configuration
 class CloudKitAppConfig: ObservableObject {
@@ -87,7 +93,7 @@ class CloudKitAppConfig: ObservableObject {
             let success = await userManager.registerUser(
                 name: defaultName,
                 email: defaultEmail,
-                phone: "123-456-7890",
+                phone: userProfile.phone.isEmpty ? "123-456-7890" : userProfile.phone,
                 role: .student // Default role
             )
             
@@ -119,11 +125,18 @@ class CloudKitAppConfig: ObservableObject {
     }
     
     /// Save user profile after onboarding
-    func saveUserProfile(name: String, email: String, mentorName: String) {
+    func saveUserProfile(name: String, email: String, mentorName: String, phone: String = "",
+                        classType: String = "Regular Class", timeSlot: String = "AM",
+                        classCode: String = "") {
         // Update the profile
         userProfile.name = name
         userProfile.email = email
         userProfile.mentorName = mentorName
+        userProfile.phone = phone
+        userProfile.classType = classType
+        userProfile.timeSlot = timeSlot
+        userProfile.classCode = classCode
+        userProfile.onboardingComplete = true
         
         // Save to UserDefaults
         do {
@@ -177,10 +190,24 @@ struct UserProfile: Codable {
     var mentorName: String = ""
     var vacationDays: Int = 96
     
-    init(name: String = "", email: String = "", mentorName: String = "", vacationDays: Int = 96) {
+    // Additional fields for capturing onboarding data
+    var phone: String = ""
+    var classType: String = "Regular Class"
+    var timeSlot: String = "AM"
+    var classCode: String = ""
+    var onboardingComplete: Bool = false
+    
+    init(name: String = "", email: String = "", mentorName: String = "", vacationDays: Int = 96,
+         phone: String = "", classType: String = "Regular Class", timeSlot: String = "AM",
+         classCode: String = "", onboardingComplete: Bool = false) {
         self.name = name
         self.email = email
         self.mentorName = mentorName
         self.vacationDays = vacationDays
+        self.phone = phone
+        self.classType = classType
+        self.timeSlot = timeSlot
+        self.classCode = classCode
+        self.onboardingComplete = onboardingComplete
     }
 }

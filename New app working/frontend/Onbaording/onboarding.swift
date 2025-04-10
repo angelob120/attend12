@@ -3,7 +3,7 @@
 //  New app working
 //
 //  Created by AB on 1/9/25.
-//  Updated with completion handler for one-way navigation
+//  Updated to be scrollable for better user experience on smaller screens
 
 import SwiftUI
 import CloudKit
@@ -13,6 +13,10 @@ class UserData: ObservableObject {
     @Published var fullName: String = ""
     @Published var email: String = ""
     @Published var mentorName: String = ""
+    @Published var phone: String = ""
+    @Published var classType: String = "Regular Class"
+    @Published var timeSlot: String = "AM"
+    @Published var classCode: String = ""
     @Published var vacationDays: Int = 96 // Default value
     
     // Singleton pattern for global access
@@ -29,6 +33,18 @@ class UserData: ObservableObject {
         if let mentorName = UserDefaults.standard.string(forKey: "userMentorName") {
             self.mentorName = mentorName
         }
+        if let phone = UserDefaults.standard.string(forKey: "userPhone") {
+            self.phone = phone
+        }
+        if let classType = UserDefaults.standard.string(forKey: "userClassType") {
+            self.classType = classType
+        }
+        if let timeSlot = UserDefaults.standard.string(forKey: "userTimeSlot") {
+            self.timeSlot = timeSlot
+        }
+        if let classCode = UserDefaults.standard.string(forKey: "userClassCode") {
+            self.classCode = classCode
+        }
         self.vacationDays = UserDefaults.standard.integer(forKey: "userVacationDays")
         if self.vacationDays == 0 {
             self.vacationDays = 96 // Set default if not previously saved
@@ -40,6 +56,10 @@ class UserData: ObservableObject {
         UserDefaults.standard.set(fullName, forKey: "userFullName")
         UserDefaults.standard.set(email, forKey: "userEmail")
         UserDefaults.standard.set(mentorName, forKey: "userMentorName")
+        UserDefaults.standard.set(phone, forKey: "userPhone")
+        UserDefaults.standard.set(classType, forKey: "userClassType")
+        UserDefaults.standard.set(timeSlot, forKey: "userTimeSlot")
+        UserDefaults.standard.set(classCode, forKey: "userClassCode")
         UserDefaults.standard.set(vacationDays, forKey: "userVacationDays")
     }
 }
@@ -47,8 +67,11 @@ class UserData: ObservableObject {
 struct OnboardingView: View {
     // MARK: - User Inputs
     @StateObject private var userData = UserData.shared
-    @State private var phone: String = ""
     @State private var classCode: String = ""
+    
+    // Class Types and Time Slots
+    let classTypes = ["Regular Class", "Renaissance Class"]
+    let timeSlots = ["AM", "PM"]
     
     // Device-specific unique identifier
     private let deviceUUID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
@@ -69,22 +92,22 @@ struct OnboardingView: View {
     }
     
     var body: some View {
-        // No NavigationView to prevent back button
-        VStack {
-            // Header
-            HStack {
-                Spacer()
-                Text("Welcome")
-                    .font(.title)
-                    .bold()
-                    .foregroundColor(Color.customGreen)
-                Spacer()
-            }
-            .padding(.top, 50)
-            .padding(.bottom, 20)
-            
-            // Form fields in ScrollView for better handling on smaller devices
-            ScrollView {
+        // Use ScrollView to make the entire content scrollable
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Spacer()
+                    Text("Welcome")
+                        .font(.title)
+                        .bold()
+                        .foregroundColor(Color.customGreen)
+                    Spacer()
+                }
+                .padding(.top, 50)
+                .padding(.bottom, 20)
+                
+                // Form fields in ScrollView for better handling on smaller devices
                 VStack(spacing: 20) {
                     // Personal Information
                     GroupBox(label: Text("Personal Information").bold()) {
@@ -98,7 +121,7 @@ struct OnboardingView: View {
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                             
-                            CustomTextField(title: "Phone Number", text: $phone)
+                            CustomTextField(title: "Phone Number", text: $userData.phone)
                                 .keyboardType(.phonePad)
                             
                             CustomTextField(title: "Mentor Name", text: $userData.mentorName)
@@ -109,9 +132,37 @@ struct OnboardingView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Class Code
+                    // Class Information
                     GroupBox(label: Text("Class Information").bold()) {
                         VStack(alignment: .leading, spacing: 15) {
+                            // Class Type Picker
+                            VStack(alignment: .leading) {
+                                Text("Class Type")
+                                    .font(.subheadline)
+                                    .bold()
+                                
+                                Picker("Class Type", selection: $userData.classType) {
+                                    ForEach(classTypes, id: \.self) { type in
+                                        Text(type).tag(type)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+                            
+                            // Time Slot Picker
+                            VStack(alignment: .leading) {
+                                Text("Time Slot")
+                                    .font(.subheadline)
+                                    .bold()
+                                
+                                Picker("Time Slot", selection: $userData.timeSlot) {
+                                    ForEach(timeSlots, id: \.self) { slot in
+                                        Text(slot).tag(slot)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+                            
                             CustomTextField(title: "Class Code", text: $classCode)
                                 .autocapitalization(.allCharacters)
                                 .disableAutocorrection(true)
@@ -157,6 +208,7 @@ struct OnboardingView: View {
                 }
                 .padding(.vertical)
             }
+            .padding()
         }
         .background(Color(.systemBackground))
         .edgesIgnoringSafeArea(.all)
@@ -164,6 +216,9 @@ struct OnboardingView: View {
     
     // MARK: - Actions
     private func submitData() {
+        // Save the class code
+        userData.classCode = classCode
+        
         // Save user data to UserDefaults
         userData.saveUserData()
         
@@ -176,21 +231,32 @@ struct OnboardingView: View {
                 let newUser = UserCK(
                     name: userData.fullName,
                     email: userData.email,
-                    phone: phone,
+                    phone: userData.phone,
                     role: .student,
                     status: .active, // Set as active to skip approval process
                     vacationDays: userData.vacationDays,
                     timeOffBalance: Double(userData.vacationDays * 8) // 8 hours per day
                 )
                 
-                // Add device UUID and mentor name to the user record
+                // Add additional data to the user record
                 if let record = newUser.record {
                     record["deviceUUID"] = deviceUUID
                     record["mentorName"] = userData.mentorName
-                    
-                    // Add class code for reference
+                    record["classType"] = userData.classType
+                    record["timeSlot"] = userData.timeSlot
                     record["classCode"] = classCode
+                    record["onboardingComplete"] = true
                 }
+                
+                // Update CloudKit user profile
+                cloudKitConfig.userProfile.name = userData.fullName
+                cloudKitConfig.userProfile.email = userData.email
+                cloudKitConfig.userProfile.mentorName = userData.mentorName
+                cloudKitConfig.userProfile.phone = userData.phone
+                cloudKitConfig.userProfile.classType = userData.classType
+                cloudKitConfig.userProfile.timeSlot = userData.timeSlot
+                cloudKitConfig.userProfile.classCode = classCode
+                cloudKitConfig.userProfile.onboardingComplete = true
                 
                 // Save user to CloudKit
                 let savedUser = try await CloudKitService.shared.saveUser(newUser)
@@ -230,13 +296,5 @@ struct CustomTextField: View {
                 )
                 .padding(.bottom, 5)
         }
-    }
-}
-
-// MARK: - Preview
-struct OnboardingView_Previews: PreviewProvider {
-    static var previews: some View {
-        OnboardingView(onboardingComplete: { _ in })
-            .environmentObject(CloudKitAppConfig.shared)
     }
 }

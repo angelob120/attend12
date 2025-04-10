@@ -27,6 +27,7 @@ struct AdminMentorRow: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
+            .padding(.leading, 10)
             
             Spacer()
             
@@ -50,6 +51,7 @@ struct AdminDashboardView: View {
     @State private var selectedUser: AppUser1?
     @State private var selectedMentor: AppUser1?
     @State private var navigateToMentorDetail = false
+    @State private var selectedEvent: Event?
     
     // Filter users based on search text and selected tab
     var filteredUsers: [AppUser1] {
@@ -74,7 +76,23 @@ struct AdminDashboardView: View {
     var body: some View {
         NavigationView {
             VStack {
-                // MARK: - Search Bar with Custom Green Outline, adapts to Light/Dark Mode
+                // MARK: - Events Section
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 15) {
+                        ForEach(Event.sampleData) { event in
+                            EventRow(event: event)
+                                .onTapGesture {
+                                    selectedEvent = event
+                                }
+                        }
+                    }
+                    .padding()
+                }
+                .sheet(item: $selectedEvent) { event in
+                    event.detailView
+                }
+                
+                // MARK: - Search Bar with Custom Green Outline
                 TextField("Search \(selectedTab)...", text: $searchText)
                     .padding(10)
                     .background(colorScheme == .dark ? Color(.secondarySystemBackground) : Color(.systemBackground))
@@ -85,7 +103,7 @@ struct AdminDashboardView: View {
                     .padding(.horizontal)
                     .padding(.top)
                 
-                // MARK: - User List (Original Style) that adapts to Light/Dark Mode
+                // MARK: - User List
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(filteredUsers, id: \.id) { user in
