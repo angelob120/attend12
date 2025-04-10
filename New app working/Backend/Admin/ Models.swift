@@ -45,6 +45,54 @@ class CustomUserManager: ObservableObject {
             phoneNumber: "555-456-7890",
             email: "michael@example.com",
             monitorName: "Mike Brown"
+        ),
+        AppUser1(
+            name: "Emily Davis",
+            status: "Active",
+            role: "Student",
+            phoneNumber: "555-234-5678",
+            email: "emily@example.com",
+            monitorName: "Sarah Wilson"
+        ),
+        AppUser1(
+            name: "David Lee",
+            status: "Active",
+            role: "Student",
+            phoneNumber: "555-345-6789",
+            email: "david@example.com",
+            monitorName: "John Thompson"
+        ),
+        AppUser1(
+            name: "Sophia Rodriguez",
+            status: "Active",
+            role: "Student",
+            phoneNumber: "555-678-9012",
+            email: "sophia@example.com",
+            monitorName: "Maria Garcia"
+        ),
+        AppUser1(
+            name: "Sarah Wilson",
+            status: "Active",
+            role: "Mentor",
+            phoneNumber: "555-789-0123",
+            email: "sarah@example.com",
+            monitorName: "Leadership Team"
+        ),
+        AppUser1(
+            name: "Robert Chen",
+            status: "Active",
+            role: "Mentor",
+            phoneNumber: "555-890-1234",
+            email: "robert@example.com",
+            monitorName: "Technical Mentors"
+        ),
+        AppUser1(
+            name: "Maria Garcia",
+            status: "Active",
+            role: "Mentor",
+            phoneNumber: "555-901-2345",
+            email: "maria@example.com",
+            monitorName: "Student Success"
         )
     ]
 

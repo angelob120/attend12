@@ -16,6 +16,17 @@ struct UserDetailView: View {
     @State private var attendanceRecords1: [AttendanceRecord1] = []
     @State private var selectedRecord: AttendanceRecord1?
     @State private var showEditSheet = false
+    
+    // Calendar State
+    @State private var currentDate = Date()
+    @State private var attendanceData: [Date: AttendanceType] = [:]
+    
+    // Enum to represent attendance types (from DetailedCalendarView)
+    enum AttendanceType {
+        case present
+        case tardy
+        case absent
+    }
 
     var body: some View {
         ScrollView {
@@ -52,37 +63,101 @@ struct UserDetailView: View {
                     .foregroundColor(user.status == "Active" ? .green : .red)
                     .padding()
 
-                // Attendance Calendar
+                // Attendance Calendar (from DetailedCalendarView)
                 Text("Attendance Calendar")
                     .font(.title2)
                     .padding(.top, 20)
-
-                AlignedAttendanceCalendarView(
-                    attendanceRecords1: $attendanceRecords1,
-                    selectedRecord: $selectedRecord,
-                    showEditSheet: $showEditSheet
-                )
+                
+                // MARK: - Month Navigation Header
+                HStack {
+                    Button(action: goToPreviousMonth) {
+                        Image(systemName: "chevron.left")
+                            .foregroundColor(.customGreen)
+                    }
+                    Spacer()
+                    Text("\(monthYearFormatter.string(from: currentDate)) Attendance")
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Button(action: goToNextMonth) {
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.customGreen)
+                    }
+                }
+                .padding(.horizontal)
+                
+                // MARK: - Weekdays Header (Sun-Sat)
+                HStack(spacing: 10) {
+                    ForEach(weekdays, id: \.self) { day in
+                        Text(day)
+                            .font(.subheadline)
+                            .bold()
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(.primary)
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(Color.customGreen.opacity(0.1))
+                .cornerRadius(8)
+                
+                // MARK: - Calendar Grid (Full Weeks, No Outline)
+                VStack(spacing: 10) {
+                    let weeks = generateWeeks()
+                    ForEach(0..<weeks.count, id: \.self) { row in
+                        HStack(spacing: 10) {
+                            ForEach(0..<7, id: \.self) { column in
+                                if let dayDate = weeks[row][column] {
+                                    // Day cell with attendance indicator
+                                    VStack(spacing: 2) {
+                                        ZStack {
+                                            if Calendar.current.isDateInToday(dayDate) {
+                                                Circle()
+                                                    .foregroundColor(.customGreen)
+                                                    .frame(width: 35, height: 35)
+                                                    .shadow(color: Color.customGreen.opacity(0.3), radius: 5, x: 0, y: 4)
+                                            }
+                                            
+                                            let dayNumber = Calendar.current.component(.day, from: dayDate)
+                                            Text("\(dayNumber)")
+                                                .foregroundColor(Calendar.current.isDateInToday(dayDate) ? .white : .primary)
+                                                .font(.headline)
+                                        }
+                                        .frame(width: 40, height: 35)
+                                        
+                                        // Attendance icon
+                                        attendanceIcon(for: dayDate)
+                                            .frame(width: 15, height: 15)
+                                    }
+                                    .onTapGesture {
+                                        selectDay(dayDate)
+                                    }
+                                } else {
+                                    // Empty cell for dates outside the current month.
+                                    Spacer()
+                                        .frame(width: 40, height: 40)
+                                }
+                            }
+                        }
+                    }
+                }
                 .padding()
+                .background(Color(.systemBackground))
+                .shadow(color: Color.customGreen.opacity(0.1), radius: 5, x: 0, y: 3)
+                
+                // MARK: - Legend with Distinct Shapes for Accessibility
+                HStack(spacing: 20) {
+                    LegendItem(color: .red, text: "Absences")
+                    LegendItem(color: .yellow, text: "Tardies")
+                    LegendItem(color: .customGreen, text: "Attendances")
+                }
+                .padding(.vertical)
 
                 Spacer()
 
                 // Bottom Vertical Button Stack
                 VStack(spacing: 12) {
                     // Edit Attendance
-                    Button(action: {
-                        if selectedRecord != nil {
-                            showEditSheet = true
-                        }
-                    }) {
-                        Text("Edit Attendance")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(selectedRecord == nil ? Color.gray : Color.blue)
-                            .cornerRadius(8)
-                    }
-                    .disabled(selectedRecord == nil)
 
                     // Remove Student
                     Button(action: {
@@ -99,8 +174,8 @@ struct UserDetailView: View {
 
                     // Promote to Teacher or Admin
                     Menu {
-                        Button("Promote to Teacher") {
-                            print("Promote to Teacher tapped")
+                        Button("Promote to Mentor") {
+                            print("Promote to Mentor tapped")
                         }
                         Button("Promote to Admin") {
                             print("Promote to Admin tapped")
@@ -139,185 +214,353 @@ struct UserDetailView: View {
                 AttendanceDetailSheet(record: record)
             }
         }
+        .onAppear {
+            generateAttendanceData()
+        }
+        .onChange(of: currentDate) { _ in
+            generateAttendanceData()
+        }
     }
-}
-
-// MARK: - AlignedAttendanceCalendarView
-struct AlignedAttendanceCalendarView: View {
-    private let columns = Array(repeating: GridItem(.flexible()), count: 7)
-    @Binding var attendanceRecords1: [AttendanceRecord1]
-    @Binding var selectedRecord: AttendanceRecord1?
-    @Binding var showEditSheet: Bool
-    @State private var calendarDates: [Date] = []
-
-    private let dateFormatter = DateFormatter()
-    private let dayOfWeekFormatter = DateFormatter()
-
-    init(
-        attendanceRecords1: Binding<[AttendanceRecord1]>,
-        selectedRecord: Binding<AttendanceRecord1?>,
-        showEditSheet: Binding<Bool>
-    ) {
-        self._attendanceRecords1 = attendanceRecords1
-        self._selectedRecord = selectedRecord
-        self._showEditSheet = showEditSheet
-
-        dateFormatter.dateFormat = "d"
-        dayOfWeekFormatter.dateFormat = "EEEEE"
-    }
-
-    private func generateAlignedDatesForCurrentMonth() {
+    
+    // MARK: - Calendar Helper Functions
+    
+    // Method to select a day and find its attendance record
+    private func selectDay(_ date: Date) {
+        // For admin view, we want to allow editing even for dates without existing records
         let calendar = Calendar.current
-        let today = Date()
-
-        guard
-            let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: today)),
-            let rangeOfDays = calendar.range(of: .day, in: .month, for: today)
-        else { return }
-
-        let totalDaysInMonth = rangeOfDays.count
-        let firstWeekday = calendar.component(.weekday, from: monthStart)
-        let daysToSubtract = firstWeekday - 1
-        let startDate = calendar.date(byAdding: .day, value: -daysToSubtract, to: monthStart) ?? monthStart
-
-        guard let lastDayOfMonth = calendar.date(byAdding: .day, value: totalDaysInMonth - 1, to: monthStart) else {
-            return
+        
+        // Create default times for new records
+        let clockInTime = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
+        let clockOutTime = calendar.date(bySettingHour: 17, minute: 0, second: 0, of: date) ?? date
+        
+        // Either use existing record or create a new one
+        if let _ = attendanceData[date] {
+            // Use existing data (would be pulled from actual database in real app)
+            selectedRecord = AttendanceRecord1(
+                date: date,
+                clockIn: clockInTime,
+                clockOut: clockOutTime
+            )
+        } else {
+            // Create a new record if none exists (admin can add records)
+            selectedRecord = AttendanceRecord1(
+                date: date,
+                clockIn: clockInTime,
+                clockOut: clockOutTime
+            )
         }
-
-        let lastWeekday = calendar.component(.weekday, from: lastDayOfMonth)
-        let daysToAdd = 7 - lastWeekday
-        let endDate = calendar.date(byAdding: .day, value: daysToAdd, to: lastDayOfMonth) ?? lastDayOfMonth
-
-        var tempDates: [Date] = []
-        var currentDate = startDate
-        while currentDate <= endDate {
-            tempDates.append(currentDate)
-            if let next = calendar.date(byAdding: .day, value: 1, to: currentDate) {
-                currentDate = next
-            } else {
-                break
-            }
-        }
-        self.calendarDates = tempDates
+        
+        // Show the edit sheet directly
+        showEditSheet = true
     }
-
-    private func colorForWeekday(_ weekday: Int) -> Color {
-        switch weekday {
-        case 2:
-            return .blue
-        case 3:
-            return .yellow
-        case 4:
-            return .red
-        case 5:
-            return .blue
-        case 6:
-            return .yellow
-        default:
-            return .gray
+    
+    // Generates a 2D array of optional Dates representing full weeks (Sun-Sat) for the current month.
+    private func generateWeeks() -> [[Date?]] {
+        var weeks: [[Date?]] = []
+        let calendar = Calendar.current
+        
+        // First and last day of the current month.
+        guard let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)),
+              let lastOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: firstOfMonth) else {
+            return weeks
         }
-    }
-
-    var body: some View {
-        VStack {
-            // Days of the week header
-            HStack {
-                ForEach(0..<7, id: \.self) { index in
-                    Text(dayOfWeekFormatter.safeShortWeekdaySymbol(at: index))
-                        .font(.subheadline)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            // Calendar Grid
-            LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(calendarDates, id: \.self) { date in
-                    let calendar = Calendar.current
-                    let isInCurrentMonth = calendar.isDate(date, equalTo: Date(), toGranularity: .month)
-                    let weekday = calendar.component(.weekday, from: date)
-
-                    if isInCurrentMonth {
-                        if weekday != 1 && weekday != 7 {
-                            let record = attendanceRecords1.first {
-                                calendar.isDate($0.date, inSameDayAs: date)
-                            }
-                            VStack {
-                                Text(dateFormatter.string(from: date))
-                                    .frame(width: 30, height: 30)
-                                    .background(
-                                        Circle()
-                                            .frame(width: 34, height: 34)
-                                            .foregroundColor(colorForWeekday(weekday))
-                                    )
-                                    .foregroundColor(.white)
-                            }
-                            .frame(height: 40)
-                            .onTapGesture {
-                                if let record = record {
-                                    selectedRecord = record
-                                }
-                            }
-                        } else {
-                            Text(dateFormatter.string(from: date))
-                                .foregroundColor(.secondary)
-                                .frame(height: 40)
-                        }
+        
+        // Compute the Sunday that starts the week of the first day.
+        let weekdayOfFirst = calendar.component(.weekday, from: firstOfMonth)
+        let firstWeekSunday = calendar.date(byAdding: .day, value: -(weekdayOfFirst - 1), to: firstOfMonth)!
+        
+        // Compute the Saturday that ends the week of the last day.
+        let weekdayOfLast = calendar.component(.weekday, from: lastOfMonth)
+        let lastWeekSaturday = calendar.date(byAdding: .day, value: (7 - weekdayOfLast), to: lastOfMonth)!
+        
+        // Iterate week-by-week from firstWeekSunday to lastWeekSaturday.
+        var weekStart = firstWeekSunday
+        while weekStart <= lastWeekSaturday {
+            var week: [Date?] = []
+            for offset in 0..<7 { // Sunday to Saturday.
+                if let day = calendar.date(byAdding: .day, value: offset, to: weekStart) {
+                    // Only show the day if it belongs to the current month.
+                    if calendar.isDate(day, equalTo: firstOfMonth, toGranularity: .month) {
+                        week.append(day)
                     } else {
-                        Text("")
-                            .frame(height: 40)
+                        week.append(nil)
                     }
                 }
             }
+            weeks.append(week)
+            weekStart = calendar.date(byAdding: .day, value: 7, to: weekStart)!
         }
-        .onAppear {
-            generateAlignedDatesForCurrentMonth()
+        return weeks
+    }
+    
+    // MARK: - Attendance Data Generation
+    
+    /// Generate random attendance data for the current month
+    private func generateAttendanceData() {
+        // Reset attendance data
+        attendanceData.removeAll()
+        
+        let calendar = Calendar.current
+        
+        // Get the first and last day of the month
+        guard let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)),
+              let lastOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: firstOfMonth) else {
+            return
         }
+        
+        // Generate data from first of month to today or last of month
+        var currentDay = firstOfMonth
+        let latestDay = min(lastOfMonth, Date())
+        
+        // Track number of absences to limit to max 5
+        var absenceCount = 0
+        
+        while currentDay <= latestDay {
+            // Skip weekends
+            if !calendar.isDateInWeekend(currentDay) {
+                // Determine attendance type
+                let attendanceType: AttendanceType
+                
+                // Limit absences to max 5
+                if absenceCount < 5 && shouldBeAbsent() {
+                    attendanceType = .absent
+                    absenceCount += 1
+                }
+                // Small chance of being tardy
+                else if shouldBeTardy() {
+                    attendanceType = .tardy
+                }
+                // Otherwise present
+                else {
+                    attendanceType = .present
+                }
+                
+                attendanceData[currentDay] = attendanceType
+            }
+            
+            // Move to next day
+            currentDay = calendar.date(byAdding: .day, value: 1, to: currentDay)!
+        }
+    }
+    
+    /// Probabilistic method to determine if a day should be an absence
+    private func shouldBeAbsent() -> Bool {
+        // Low probability of absence
+        return Double.random(in: 0...1) < 0.1 // 10% chance
+    }
+    
+    /// Probabilistic method to determine if a day should be tardy
+    private func shouldBeTardy() -> Bool {
+        // Low probability of tardiness
+        return Double.random(in: 0...1) < 0.15 // 15% chance
+    }
+    
+    // New method to generate attendance icon
+    private func attendanceIcon(for date: Date) -> some View {
+        guard let attendanceType = attendanceData[date],
+              !Calendar.current.isDateInWeekend(date) else {
+            return AnyView(EmptyView())
+        }
+        
+        switch attendanceType {
+        case .present:
+            return AnyView(
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 10, height: 10)
+            )
+        case .tardy:
+            return AnyView(
+                Triangle()
+                    .fill(Color.yellow)
+                    .frame(width: 10, height: 10)
+            )
+        case .absent:
+            return AnyView(
+                Rectangle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+            )
+        }
+    }
+    
+    // MARK: - Month Navigation Functions
+    func goToNextMonth() {
+        if let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: currentDate) {
+            currentDate = nextMonth
+        }
+    }
+    
+    func goToPreviousMonth() {
+        if let previousMonth = Calendar.current.date(byAdding: .month, value: -1, to: currentDate) {
+            currentDate = previousMonth
+        }
+    }
+    
+    // Weekdays header: Sunday through Saturday.
+    private var weekdays: [String] {
+        ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    }
+    
+    // Formatter for month and year display.
+    private var monthYearFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter
     }
 }
 
-// MARK: - Edit Attendance Sheet
+// We're using the Triangle and LegendItem from DetailedCalendarView.swift
+// (Triangle and LegendItem are already defined elsewhere)
+
+// MARK: - EditAttendanceSheet
 struct EditAttendanceSheet: View {
     @State var record: AttendanceRecord1
     @Environment(\.presentationMode) var presentationMode
+    @State private var attendanceStatus: String = "Present"
+    let statusOptions = ["Present", "Tardy", "Absent"]
 
     var body: some View {
-        VStack {
-            Text("Edit Attendance for \(record.date, formatter: DateFormatter.shortDate)")
-                .font(.title2)
+        ScrollView {
+            VStack(spacing: 20) {
+                // Title with date
+                Text("Attendance Record")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .padding(.top)
+                
+                Text(record.date, formatter: DateFormatter.shortDate)
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+                
+                // Current times
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Current Clock In:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(timeFormatter.string(from: record.clockIn))
+                            .font(.headline)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing) {
+                        Text("Current Clock Out:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(timeFormatter.string(from: record.clockOut))
+                            .font(.headline)
+                    }
+                }
                 .padding()
-
-            DatePicker("Clock In Time", selection: $record.clockIn, displayedComponents: .hourAndMinute)
-                .datePickerStyle(WheelDatePickerStyle())
-                .padding()
-
-            DatePicker(
-                "Clock Out Time",
-                selection: $record.clockOut,
-                in: record.clockIn...(record.clockIn.addingTimeInterval(4 * 3600)),
-                displayedComponents: .hourAndMinute
-            )
-            .datePickerStyle(WheelDatePickerStyle())
-            .padding()
-
-            Button {
-                presentationMode.wrappedValue.dismiss()
-            } label: {
-                Text("Save")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.green)
-                    .cornerRadius(8)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                
+                Divider()
+                
+                // Status Picker
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Attendance Status:")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    Picker("Status", selection: $attendanceStatus) {
+                        ForEach(statusOptions, id: \.self) { status in
+                            Text(status)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+                .padding(.horizontal)
+                
+                // Edit Clock Times Section
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Edit Clock In/Out Times")
+                        .font(.headline)
+                        .padding(.top)
+                    
+                    // Clock In Time Picker
+                    VStack(alignment: .leading) {
+                        Text("Clock In Time:")
+                            .font(.subheadline)
+                        
+                        DatePicker("", selection: $record.clockIn, displayedComponents: .hourAndMinute)
+                            .datePickerStyle(WheelDatePickerStyle())
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity)
+                    }
+                    
+                    // Clock Out Time Picker
+                    VStack(alignment: .leading) {
+                        Text("Clock Out Time:")
+                            .font(.subheadline)
+                        
+                        DatePicker("", selection: $record.clockOut,
+                                   in: record.clockIn...(record.clockIn.addingTimeInterval(4 * 3600)),
+                                   displayedComponents: .hourAndMinute)
+                            .datePickerStyle(WheelDatePickerStyle())
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal)
+                
+                Spacer(minLength: 30)
+                
+                // Action Buttons
+                HStack(spacing: 20) {
+                    Button {
+                        // Cancel without saving
+                        presentationMode.wrappedValue.dismiss()
+                    } label: {
+                        Text("Cancel")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.red)
+                            .cornerRadius(8)
+                    }
+                    
+                    Button {
+                        // Here you would save the updated record with the status
+                        // For this example, we just dismiss
+                        presentationMode.wrappedValue.dismiss()
+                    } label: {
+                        Text("Save")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 40)
             }
             .padding()
         }
-        .frame(maxWidth: 400)
-        .padding()
+    }
+    
+    // Formatter for displaying time
+    private var timeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
     }
 }
 
-// MARK: - Safe Extension for Short Weekday Symbols
+// Original necessary data structures and formatters (unchanged)
+struct AttendanceRecord1: Identifiable {
+    let id = UUID()
+    var date: Date
+    var clockIn: Date
+    var clockOut: Date
+}
+
 extension DateFormatter {
     func safeShortWeekdaySymbol(at index: Int) -> String {
         let symbols = self.shortWeekdaySymbols ?? []
@@ -329,12 +572,4 @@ extension DateFormatter {
         formatter.dateStyle = .medium
         return formatter
     }
-}
-
-// MARK: - AttendanceRecord1
-struct AttendanceRecord1: Identifiable {
-    let id = UUID()
-    var date: Date
-    var clockIn: Date
-    var clockOut: Date
 }

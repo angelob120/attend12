@@ -4,6 +4,7 @@
 //
 //  Created by AB on 1/9/25.
 //  Updated for onboarding flow with role switcher tab
+//
 
 import SwiftUI
 
@@ -12,10 +13,13 @@ struct New_app_workingApp: App {
     // Add the app delegate
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
-    // Environment Objects
+    // Shared CloudKit configuration
     @StateObject private var cloudKitConfig = CloudKitAppConfig.shared
     
-    // State for app flow
+    // Create a separate CustomUserManager for environment injection
+    @StateObject private var userManager = CustomUserManager()
+    
+    // States for app flow
     @State private var isCheckingAuth = true
     @State private var needsOnboarding = true  // Set to true to show onboarding first
     
@@ -29,6 +33,7 @@ struct New_app_workingApp: App {
                     // Show loading view while checking authentication
                     LoadingView()
                         .environmentObject(cloudKitConfig)
+                        .environmentObject(userManager)
                         .onAppear {
                             checkDeviceAuthentication()
                         }
@@ -36,16 +41,18 @@ struct New_app_workingApp: App {
                     // Show onboarding first
                     OnboardingView(onboardingComplete: { user in
                         // Set the completed user and mark onboarding as done
-                        cloudKitConfig.userManager.currentUser = user
+                        userManager.allUsers.append(user.toAppModel())
                         needsOnboarding = false
                     })
                     .environmentObject(cloudKitConfig)
+                    .environmentObject(userManager)
                     .transition(.opacity)
                     .animation(.easeInOut, value: needsOnboarding)
                 } else {
                     // Show the StudentDashboardView with role switcher tab
                     MainTabView()
                         .environmentObject(cloudKitConfig)
+                        .environmentObject(userManager)
                         .transition(.opacity)
                         .animation(.easeInOut, value: needsOnboarding)
                 }
@@ -83,7 +90,7 @@ struct New_app_workingApp: App {
                 DispatchQueue.main.async {
                     if let user = matchingUser {
                         // Found a matching user, set as current user and skip onboarding
-                        cloudKitConfig.userManager.currentUser = user
+                        userManager.allUsers.append(user.toAppModel())
                         needsOnboarding = false
                         
                         // Load any existing user data if available
@@ -123,23 +130,24 @@ struct New_app_workingApp: App {
 // Main tab view with Dashboard and Role Switcher
 struct MainTabView: View {
     @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var userManager: CustomUserManager
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             // First tab - Dashboard
             StudentDashboardView()
+                .tag(0)
                 .tabItem {
                     Label("Dashboard", systemImage: "house.fill")
                 }
-                .tag(0)
             
             // Second tab - Role Switcher
             RoleSwitcherView()
+                .tag(1)
                 .tabItem {
                     Label("Roles", systemImage: "person.3.fill")
                 }
-                .tag(1)
         }
     }
 }
@@ -147,6 +155,7 @@ struct MainTabView: View {
 // Role Switcher View
 struct RoleSwitcherView: View {
     @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var userManager: CustomUserManager
     @State private var showView: String? = nil
     
     // Role options
@@ -232,10 +241,8 @@ struct RoleSwitcherView: View {
         case "student":
             cloudKitConfig.currentUserRoleCK = .student
         default:
-            // Other roles don't change CloudKitConfig
             break
         }
-        
         // Navigate to the selected view
         self.showView = role
     }
@@ -245,21 +252,17 @@ struct RoleSwitcherView: View {
         switch role {
         case "student":
             StudentDashboardView()
-                .environmentObject(cloudKitConfig)
         case "mentor":
             MentorProfileView()
-                .environmentObject(cloudKitConfig)
         case "admin":
             AdminDashboardView()
-                .environmentObject(cloudKitConfig)
         case "ipad":
             iPadDashboardView()
-                .environmentObject(cloudKitConfig)
         case "test":
             TestView()
-                .environmentObject(cloudKitConfig)
         default:
             Text("Invalid Selection")
         }
     }
 }
+

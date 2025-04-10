@@ -132,7 +132,7 @@ struct DetailedCalendarView: View {
                 
                 // MARK: - Time Off Left Section (Same height as action buttons)
                 HStack {
-                    Text("Time Off Left:")
+                    Text("Vacation Left:")
                         .bold()
                         .foregroundColor(.white)
                     Spacer()
