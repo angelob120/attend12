@@ -66,6 +66,7 @@ class UserData: ObservableObject {
 
 struct OnboardingView: View {
     // MARK: - User Inputs
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     @StateObject private var userData = UserData.shared
     @State private var classCode: String = ""
     
@@ -81,10 +82,9 @@ struct OnboardingView: View {
     @State private var isRegistering = false
     
     // Environment object for CloudKit configuration
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
     
     // Completion handler to notify when onboarding is complete
-    var onboardingComplete: (UserCK) -> Void
+    var onboardingComplete: (UserFM) -> Void
     
     // Form validation
     var isFormValid: Bool {
@@ -228,7 +228,7 @@ struct OnboardingView: View {
         Task {
             do {
                 // Create a new user in CloudKit with device UUID
-                let newUser = UserCK(
+                let newUser = UserFM(
                     name: userData.fullName,
                     email: userData.email,
                     phone: userData.phone,
@@ -239,7 +239,7 @@ struct OnboardingView: View {
                 )
                 
                 // Add additional data to the user record
-                if let record = newUser.record {
+                if let record = UserFM.record {
                     record["deviceUUID"] = deviceUUID
                     record["mentorName"] = userData.mentorName
                     record["classType"] = userData.classType
@@ -249,17 +249,17 @@ struct OnboardingView: View {
                 }
                 
                 // Update CloudKit user profile
-                cloudKitConfig.userProfile.name = userData.fullName
-                cloudKitConfig.userProfile.email = userData.email
-                cloudKitConfig.userProfile.mentorName = userData.mentorName
-                cloudKitConfig.userProfile.phone = userData.phone
-                cloudKitConfig.userProfile.classType = userData.classType
-                cloudKitConfig.userProfile.timeSlot = userData.timeSlot
-                cloudKitConfig.userProfile.classCode = classCode
-                cloudKitConfig.userProfile.onboardingComplete = true
+                FileMakerAppConfig.userProfile.name = userData.fullName
+                FileMakerAppConfig.userProfile.email = userData.email
+                FileMakerAppConfig.userProfile.mentorName = userData.mentorName
+                FileMakerAppConfig.userProfile.phone = userData.phone
+                FileMakerAppConfig.userProfile.classType = userData.classType
+                FileMakerAppConfig.userProfile.timeSlot = userData.timeSlot
+                FileMakerAppConfig.userProfile.classCode = classCode
+                FileMakerAppConfig.userProfile.onboardingComplete = true
                 
                 // Save user to CloudKit
-                let savedUser = try await CloudKitService.shared.saveUser(newUser)
+                let savedUser = try await FileMakerService.shared.saveUser(newUser)
                 
                 // Mark registration as complete using the completion handler
                 DispatchQueue.main.async {

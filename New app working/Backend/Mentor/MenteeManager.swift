@@ -12,7 +12,7 @@ class MenteeManager: ObservableObject {
     @Published var allMentees: [Mentee] = SampleMenteeData.allMentees
 
     /// Remove mentee from My Mentees
-    func removeFromMyMentees(_ mentee: Mentee) {
+    func removeFromMyMentees1(_ mentee: Mentee) {
         myMentees.removeAll { $0.id == mentee.id }
         if !allMentees.contains(where: { $0.id == mentee.id }) {
             allMentees.append(mentee)
@@ -20,7 +20,7 @@ class MenteeManager: ObservableObject {
     }
 
     /// Add mentee to My Mentees
-    func addToMyMentees(_ mentee: Mentee) {
+    func addToMyMentees1(_ mentee: Mentee) {
         if !myMentees.contains(where: { $0.id == mentee.id }) {
             myMentees.append(mentee)
         }

@@ -18,6 +18,9 @@ extension Color {
     static let iconColor = Color(red: 211/255, green: 230/255, blue: 227/255)
 }
 
+
+import SwiftUI
+
 // MARK: - Attendance Progress Bar View
 struct AttendanceProgressBar: View {
     // The attendance percentage as a fraction (e.g., 0.91 for 91%)
@@ -107,14 +110,14 @@ struct VacationProgressBar: View {
 struct StudentDashboardView: View {
     @Environment(\.colorScheme) var colorScheme
     
-    // Use a shared CloudKit configuration
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    // Use FileMakerAppConfig as EnvironmentObject
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     
-    // Timer service for tracking clock in/out
-    @ObservedObject private var timerService = TimerService.shared
+    // Use CustomUserManager or create a new UserManagerFM
+    @EnvironmentObject var userManager: CustomUserManager
     
-    // AttendanceManager for processing attendance actions
-    @ObservedObject private var attendanceManager = AttendanceManager.shared
+    // Replace AttendanceManager with AttendanceManagerFM
+    @ObservedObject private var attendanceManager = AttendanceManagerFM.shared
     
     @State private var selectedEvent: Event? = nil
     @State private var showQRScanner = false
@@ -123,6 +126,7 @@ struct StudentDashboardView: View {
     @State private var scanResult: String? = nil
     @State private var showInvalidCodeAlert = false
     @State private var showRolePicker = false // For role switching
+    @StateObject private var timerService = TimerService.shared
     
     @StateObject private var scannerManager = QRCodeScannerManager()
     
@@ -130,6 +134,16 @@ struct StudentDashboardView: View {
     @State private var remainingTimeOffHours: Double = 96
 
     let maxTime: TimeInterval = 4 * 60 * 60 // 4 hours in seconds
+    
+    // Computed property to get the current user
+    private var currentUser: AppUser1? {
+        // Try to get the current user from FileMakerConfig
+        guard let currentUserFM = fileMakerConfig.currentUserFM else {
+            // Fallback to user manager if needed
+            return userManager.allUsers.first(where: { $0.email == fileMakerConfig.userProfile.email })
+        }
+        return currentUserFM.toAppModel()
+    }
     
     // Computed property to get the current month and year for the calendar section
     var currentMonthYear: String {
@@ -341,12 +355,17 @@ struct StudentDashboardView: View {
         timerService.startTimer()
         attendanceError = nil
         Task {
-            if let userId = cloudKitConfig.userManager.currentUser?.id {
-                let success = await attendanceManager.clockIn(menteeID: userId)
-                if !success {
-                    DispatchQueue.main.async {
-                        attendanceError = "Clock in recorded locally only"
-                    }
+            guard let user = currentUser else {
+                DispatchQueue.main.async {
+                    attendanceError = "Unable to identify current user"
+                }
+                return
+            }
+            
+            let success = await attendanceManager.clockIn(menteeID: user.id)
+            if !success {
+                DispatchQueue.main.async {
+                    attendanceError = "Clock in recorded locally only"
                 }
             }
         }

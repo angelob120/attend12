@@ -13,7 +13,7 @@ struct AdminMentorDetailView: View {
     
     // Environment objects for data access
     @EnvironmentObject var userManager: CustomUserManager
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     
     // State for UI interactions
     @State private var showPromoteConfirmation = false
@@ -251,6 +251,6 @@ struct AdminMentorDetailView_Previews: PreviewProvider {
         
         AdminMentorDetailView(mentor: sampleMentor)
             .environmentObject(CustomUserManager())
-            .environmentObject(CloudKitAppConfig.shared)
+            .environmentObject(FileMakerAppConfig.shared)
     }
 }

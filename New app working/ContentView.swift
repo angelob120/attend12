@@ -46,7 +46,7 @@ enum UserRole: String, CaseIterable {
 }
 
 struct ContentView: View {
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     @State private var selectedRole: UserRole = .student  // Default role
 
     var body: some View {
@@ -68,7 +68,7 @@ struct ContentView: View {
     }
     
     private func updateRoleFromCloudKit() {
-        let roleString = cloudKitConfig.mapToAppUserRole()
+        let roleString = fileMakerConfig.mapToAppUserRole()
         switch roleString {
         case "admin":
             selectedRole = .admin
@@ -96,16 +96,12 @@ struct ContentView: View {
             // But just in case, include a proper implementation
             OnboardingView(onboardingComplete: { user in
                 // Update the role based on the completed user
-                if let role = user.record?["role"] as? String {
-                    switch role {
-                    case "admin":
-                        selectedRole = .admin
-                    case "mentor":
-                        selectedRole = .mentor
-                    default:
-                        selectedRole = .student
-                    }
-                } else {
+                switch user.role {
+                case .admin:
+                    selectedRole = .admin
+                case .mentor:
+                    selectedRole = .mentor
+                case .student, .pending:
                     selectedRole = .student
                 }
             })
@@ -144,6 +140,6 @@ struct RoleStatusBanner: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
-            .environmentObject(CloudKitAppConfig.shared)
+            .environmentObject(FileMakerAppConfig.shared)
     }
 }

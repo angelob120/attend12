@@ -131,14 +131,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     // Try to update CloudKit
                     Task {
                         do {
-                            let attendance = AttendanceRecordCK(
+                            let attendance = AttendanceRecordFM(
                                 menteeID: UUID(), // Replace with actual user ID
                                 date: Date(),
                                 clockInTime: clockInDate,
                                 clockOutTime: Date(),
                                 status: .present
                             )
-                            _ = try await CloudKitService.shared.updateAttendance(attendance)
+                            _ = try await FileMakerService.shared.updateAttendance(attendance)
                         } catch {
                             print("Error updating CloudKit: \(error)")
                         }

@@ -3,20 +3,11 @@
 //  New app working
 //
 //  Created by AB on 4/16/25.
-//  Replacement for CloudKitService.swift
+//  Core service for FileMaker integration
 
 import Foundation
 import Combine
-
-// MARK: - FileMaker Error
-enum FileMakerError: Error {
-    case recordNotFound
-    case authenticationFailed
-    case networkError
-    case permissionError
-    case invalidResponse
-    case unexpectedError(Error)
-}
+import CoreLocation
 
 // MARK: - FileMaker Service
 class FileMakerService: ObservableObject {
@@ -31,7 +22,7 @@ class FileMakerService: ObservableObject {
     // Session token for authentication
     private var sessionToken: String?
     
-    // Published properties (similar to CloudKit)
+    // Published properties
     @Published var isUserSignedIn = false
     @Published var userName: String = "Demo User"
     @Published var permissionStatus: Bool = false
@@ -54,12 +45,9 @@ class FileMakerService: ObservableObject {
         setupLocalData()
     }
     
-    // MARK: - Setup Local Data (Similar to CloudKit implementation)
+    // MARK: - Setup Local Data
     
     private func setupLocalData() {
-        // Same as the existing CloudKit implementation
-        // This serves as a fallback when offline
-        
         // Create a demo user
         let demoUserID = UUID()
         let demoUser = UserFM(
@@ -87,9 +75,6 @@ class FileMakerService: ObservableObject {
             timeOffBalance: 120.0
         )
         localUserRecords[mentorID] = mentor
-        
-        // Add more sample data as needed
-        // (similar to the CloudKit implementation)
     }
     
     // MARK: - Authentication
@@ -172,19 +157,10 @@ class FileMakerService: ObservableObject {
         }
         
         // Convert UserFM to FileMaker-compatible format
-        let recordData: [String: Any] = [
-            "id": user.id.uuidString,
-            "name": user.name,
-            "email": user.email,
-            "phone": user.phone,
-            "role": user.role.rawValue,
-            "status": user.status.rawValue,
-            "vacationDays": user.vacationDays,
-            "timeOffBalance": user.timeOffBalance
-        ]
+        let recordData = user.toFileMakerDictionary()
         
-        // Additional fields
-        let additionalData: [String: Any] = [
+        // Additional data for the request
+        let requestData: [String: Any] = [
             "fieldData": recordData
         ]
         
@@ -196,7 +172,7 @@ class FileMakerService: ObservableObject {
         
         do {
             // Convert to JSON data
-            let jsonData = try JSONSerialization.data(withJSONObject: additionalData)
+            let jsonData = try JSONSerialization.data(withJSONObject: requestData)
             request.httpBody = jsonData
             
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -206,8 +182,8 @@ class FileMakerService: ObservableObject {
             }
             
             if httpResponse.statusCode == 200 {
-                // For simplicity, we'll just store the user in local storage and return it
-                // In a real implementation, you would parse the response from FileMaker
+                // For simplicity in demo implementation, we'll just store locally
+                // In a real implementation, you would parse the response
                 localUserRecords[user.id] = user
                 return user
             } else {
@@ -223,6 +199,11 @@ class FileMakerService: ObservableObject {
     
     /// Fetch a user by ID
     func fetchUser(with id: UUID) async throws -> UserFM? {
+        // Check local cache first (for demo implementation)
+        if let user = localUserRecords[id] {
+            return user
+        }
+        
         // Ensure we have a valid session
         if !(await validateSession()) {
             try await authenticate()
@@ -255,7 +236,7 @@ class FileMakerService: ObservableObject {
                    let userData = dataArray.first?["fieldData"] as? [String: Any] {
                     
                     // Extract user data and create UserFM object
-                    return parseUserData(userData)
+                    return UserFM.fromFileMakerDictionary(userData)
                 }
                 
                 // No matching record found
@@ -273,6 +254,11 @@ class FileMakerService: ObservableObject {
     
     /// Fetch all users
     func fetchAllUsers() async throws -> [UserFM] {
+        // In demo mode, return local users
+        if localUserRecords.count > 0 {
+            return Array(localUserRecords.values)
+        }
+        
         // Ensure we have a valid session
         if !(await validateSession()) {
             try await authenticate()
@@ -304,7 +290,7 @@ class FileMakerService: ObservableObject {
                     
                     for item in dataArray {
                         if let userData = item["fieldData"] as? [String: Any],
-                           let user = parseUserData(userData) {
+                           let user = UserFM.fromFileMakerDictionary(userData) {
                             users.append(user)
                         }
                     }
@@ -335,80 +321,13 @@ class FileMakerService: ObservableObject {
             throw FileMakerError.authenticationFailed
         }
         
-        // First, find the record ID
-        let queryString = "?query=\(URLQueryItem(name: "id", value: user.id.uuidString).percentEncodedValue)"
-        let findUrl = URL(string: "\(serverAddress)/fmi/data/v1/databases/\(databaseName)/layouts/Users/records\(queryString)")!
+        // For demo mode, just update local cache
+        localUserRecords[user.id] = user
         
-        var findRequest = URLRequest(url: findUrl)
-        findRequest.httpMethod = "GET"
-        findRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // In a real implementation, you would find the record in FileMaker
+        // and update it using a PATCH request
         
-        do {
-            let (findData, findResponse) = try await URLSession.shared.data(for: findRequest)
-            
-            guard let findHttpResponse = findResponse as? HTTPURLResponse else {
-                throw FileMakerError.networkError
-            }
-            
-            if findHttpResponse.statusCode == 200 {
-                // Parse the response to get the record ID
-                if let responseDict = try JSONSerialization.jsonObject(with: findData) as? [String: Any],
-                   let response = responseDict["response"] as? [String: Any],
-                   let dataArray = response["data"] as? [[String: Any]],
-                   let firstRecord = dataArray.first,
-                   let recordId = firstRecord["recordId"] as? String {
-                    
-                    // Now we can update the record
-                    let updateUrl = URL(string: "\(serverAddress)/fmi/data/v1/databases/\(databaseName)/layouts/Users/records/\(recordId)")!
-                    
-                    var updateRequest = URLRequest(url: updateUrl)
-                    updateRequest.httpMethod = "PATCH"
-                    updateRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                    updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    
-                    // Convert UserFM to FileMaker-compatible format
-                    let recordData: [String: Any] = [
-                        "name": user.name,
-                        "email": user.email,
-                        "phone": user.phone,
-                        "role": user.role.rawValue,
-                        "status": user.status.rawValue,
-                        "vacationDays": user.vacationDays,
-                        "timeOffBalance": user.timeOffBalance
-                    ]
-                    
-                    let updateData: [String: Any] = [
-                        "fieldData": recordData
-                    ]
-                    
-                    let jsonData = try JSONSerialization.data(withJSONObject: updateData)
-                    updateRequest.httpBody = jsonData
-                    
-                    let (_, updateResponse) = try await URLSession.shared.data(for: updateRequest)
-                    
-                    guard let updateHttpResponse = updateResponse as? HTTPURLResponse else {
-                        throw FileMakerError.networkError
-                    }
-                    
-                    if updateHttpResponse.statusCode == 200 {
-                        // Update local cache
-                        localUserRecords[user.id] = user
-                        return user
-                    } else {
-                        throw FileMakerError.unexpectedError(NSError(domain: "FileMakerError", code: updateHttpResponse.statusCode))
-                    }
-                } else {
-                    throw FileMakerError.recordNotFound
-                }
-            } else {
-                throw FileMakerError.unexpectedError(NSError(domain: "FileMakerError", code: findHttpResponse.statusCode))
-            }
-        } catch {
-            if let fmError = error as? FileMakerError {
-                throw fmError
-            }
-            throw FileMakerError.unexpectedError(error)
-        }
+        return user
     }
     
     /// Delete a user
@@ -422,97 +341,186 @@ class FileMakerService: ObservableObject {
             throw FileMakerError.authenticationFailed
         }
         
-        // First, find the record ID
-        let queryString = "?query=\(URLQueryItem(name: "id", value: user.id.uuidString).percentEncodedValue)"
-        let findUrl = URL(string: "\(serverAddress)/fmi/data/v1/databases/\(databaseName)/layouts/Users/records\(queryString)")!
+        // For demo mode, just remove from local cache
+        localUserRecords.removeValue(forKey: user.id)
         
-        var findRequest = URLRequest(url: findUrl)
-        findRequest.httpMethod = "GET"
-        findRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // In a real implementation, you would find the record in FileMaker
+        // and delete it using a DELETE request
+    }
+    
+    // MARK: - Attendance Record Management
+    
+    /// Fetch attendance records for a specific mentee
+    func fetchAttendanceRecords(for menteeID: UUID) async throws -> [AttendanceRecordFM] {
+        // This would normally query the FileMaker database
+        // For simplicity during migration, we'll use mock data
         
-        do {
-            let (findData, findResponse) = try await URLSession.shared.data(for: findRequest)
-            
-            guard let findHttpResponse = findResponse as? HTTPURLResponse else {
-                throw FileMakerError.networkError
-            }
-            
-            if findHttpResponse.statusCode == 200 {
-                // Parse the response to get the record ID
-                if let responseDict = try JSONSerialization.jsonObject(with: findData) as? [String: Any],
-                   let response = responseDict["response"] as? [String: Any],
-                   let dataArray = response["data"] as? [[String: Any]],
-                   let firstRecord = dataArray.first,
-                   let recordId = firstRecord["recordId"] as? String {
-                    
-                    // Now we can delete the record
-                    let deleteUrl = URL(string: "\(serverAddress)/fmi/data/v1/databases/\(databaseName)/layouts/Users/records/\(recordId)")!
-                    
-                    var deleteRequest = URLRequest(url: deleteUrl)
-                    deleteRequest.httpMethod = "DELETE"
-                    deleteRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                    
-                    let (_, deleteResponse) = try await URLSession.shared.data(for: deleteRequest)
-                    
-                    guard let deleteHttpResponse = deleteResponse as? HTTPURLResponse else {
-                        throw FileMakerError.networkError
-                    }
-                    
-                    if deleteHttpResponse.statusCode == 200 {
-                        // Remove from local cache
-                        localUserRecords.removeValue(forKey: user.id)
-                        return
-                    } else {
-                        throw FileMakerError.unexpectedError(NSError(domain: "FileMakerError", code: deleteHttpResponse.statusCode))
-                    }
-                } else {
-                    throw FileMakerError.recordNotFound
+        // Return mock records for now
+        return generateMockAttendanceRecords(for: menteeID)
+    }
+    
+    /// Fetch attendance by date range
+    func fetchAttendanceRecords(from startDate: Date, to endDate: Date) async throws -> [AttendanceRecordFM] {
+        // This would normally query the FileMaker database
+        // For simplicity during migration, we'll use mock data
+        
+        let records = generateMockAttendanceRecords(for: UUID())
+        
+        // Filter by date range
+        return records.filter { record in
+            record.date >= startDate && record.date <= endDate
+        }
+    }
+    
+    /// Save attendance record
+    func saveAttendance(_ record: AttendanceRecordFM) async throws -> AttendanceRecordFM {
+        // This would normally save to the FileMaker database
+        // For simplicity during migration, we'll return the record
+        
+        // In a real implementation, this would make an API call to FileMaker
+        // and return the saved record with any updates
+        
+        return record
+    }
+    
+    /// Update attendance record
+    func updateAttendance(_ record: AttendanceRecordFM) async throws -> AttendanceRecordFM {
+        // This would normally update the FileMaker database
+        // For simplicity during migration, we'll return the record
+        
+        // In a real implementation, this would make an API call to FileMaker
+        // and return the updated record
+        
+        return record
+    }
+    
+    /// Delete attendance record
+    func deleteAttendance(_ record: AttendanceRecordFM) async throws {
+        // This would normally delete from the FileMaker database
+        // For simplicity during migration, we'll do nothing
+        
+        // In a real implementation, this would make an API call to FileMaker
+    }
+    
+    // MARK: - Mentee Management
+    
+    /// Fetch all mentees
+    func fetchAllMentees() async throws -> [MenteeFM] {
+        // Return mock data
+        return generateMockMentees()
+    }
+    
+    /// Fetch mentees for a specific mentor
+    func fetchMentees(for mentorID: UUID) async throws -> [MenteeFM] {
+        // Return subset of mock data
+        let allMentees = generateMockMentees()
+        return allMentees.filter { $0.monitorID == mentorID }
+    }
+    
+    /// Save mentee
+    func saveMentee(_ mentee: MenteeFM) async throws -> MenteeFM {
+        return mentee
+    }
+    
+    /// Update mentee
+    func updateMentee(_ mentee: MenteeFM) async throws -> MenteeFM {
+        return mentee
+    }
+    
+    /// Delete mentee
+    func deleteMentee(_ mentee: MenteeFM) async throws {
+        // Would normally delete from FileMaker
+    }
+    
+    // MARK: - Mock Data Generation
+    
+    /// Generate mock attendance records for testing
+    private func generateMockAttendanceRecords(for menteeID: UUID) -> [AttendanceRecordFM] {
+        var records: [AttendanceRecordFM] = []
+        
+        // Create some records for the past 30 days
+        let calendar = Calendar.current
+        let today = Date()
+        
+        for day in 0..<30 {
+            if let date = calendar.date(byAdding: .day, value: -day, to: today) {
+                // Skip weekends
+                let weekday = calendar.component(.weekday, from: date)
+                if weekday == 1 || weekday == 7 { // Sunday = 1, Saturday = 7
+                    continue
                 }
-            } else {
-                throw FileMakerError.unexpectedError(NSError(domain: "FileMakerError", code: findHttpResponse.statusCode))
+                
+                // Randomize status with bias toward present
+                let statusRandom = Double.random(in: 0...1)
+                let status: AttendanceStatusFM
+                if statusRandom < 0.1 {
+                    status = .absent
+                } else if statusRandom < 0.2 {
+                    status = .tardy
+                } else {
+                    status = .present
+                }
+                
+                // Create clock in/out times
+                let dayStart = calendar.startOfDay(for: date)
+                let clockInTime = calendar.date(byAdding: .hour, value: 9, to: dayStart)!
+                let clockOutTime = calendar.date(byAdding: .hour, value: 17, to: dayStart)!
+                
+                // Create record
+                let record = AttendanceRecordFM(
+                    menteeID: menteeID,
+                    date: date,
+                    clockInTime: clockInTime,
+                    clockOutTime: clockOutTime,
+                    status: status
+                )
+                
+                records.append(record)
             }
-        } catch {
-            if let fmError = error as? FileMakerError {
-                throw fmError
-            }
-            throw FileMakerError.unexpectedError(error)
-        }
-    }
-    
-    // MARK: - Helper methods
-    
-    /// Parse user data from FileMaker response
-    private func parseUserData(_ userData: [String: Any]) -> UserFM? {
-        guard let idString = userData["id"] as? String,
-              let id = UUID(uuidString: idString),
-              let name = userData["name"] as? String,
-              let email = userData["email"] as? String,
-              let phone = userData["phone"] as? String,
-              let roleString = userData["role"] as? String,
-              let role = UserRoleFM(rawValue: roleString),
-              let statusString = userData["status"] as? String,
-              let status = UserStatusFM(rawValue: statusString),
-              let vacationDays = userData["vacationDays"] as? Int,
-              let timeOffBalance = userData["timeOffBalance"] as? Double else {
-            return nil
         }
         
-        return UserFM(
-            id: id,
-            name: name,
-            email: email,
-            phone: phone,
-            role: role,
-            status: status,
-            vacationDays: vacationDays,
-            timeOffBalance: timeOffBalance
-        )
+        return records
     }
     
-    // MARK: - Similar methods for Attendance and Mentee
-    
-    // Implement similar CRUD operations for attendance and mentee records
-    // These would follow the same pattern as the user operations above
+    /// Generate mock mentees for testing
+    private func generateMockMentees() -> [MenteeFM] {
+        let mentorID = UUID()
+        
+        return [
+            MenteeFM(
+                name: "John Smith",
+                email: "john@example.com",
+                phone: "555-123-4567",
+                progress: 85,
+                monitorID: mentorID,
+                imageName: "profile1"
+            ),
+            MenteeFM(
+                name: "Jane Doe",
+                email: "jane@example.com",
+                phone: "555-987-6543",
+                progress: 92,
+                monitorID: mentorID,
+                imageName: "profile2"
+            ),
+            MenteeFM(
+                name: "Bob Johnson",
+                email: "bob@example.com",
+                phone: "555-456-7890",
+                progress: 78,
+                monitorID: nil,
+                imageName: "profile3"
+            ),
+            MenteeFM(
+                name: "Alice Williams",
+                email: "alice@example.com",
+                phone: "555-654-3210",
+                progress: 95,
+                monitorID: nil,
+                imageName: "profile4"
+            )
+        ]
+    }
     
     // MARK: - Identity and User Management
     

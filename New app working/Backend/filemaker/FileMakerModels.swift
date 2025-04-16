@@ -3,10 +3,11 @@
 //  New app working
 //
 //  Created by AB on 4/16/25.
-//  Replacement for CloudKitModels.swift
+//  Core model definitions for FileMaker integration
 
 import Foundation
 import CoreLocation
+import SwiftUI
 
 // MARK: - FileMaker Table Names
 struct FMTable {
@@ -82,36 +83,91 @@ enum AttendanceStatusFM: String, Codable, CaseIterable {
             return .tardy
         }
     }
+    
+    var color: Color {
+        switch self {
+        case .present:
+            return .green
+        case .absent:
+            return .red
+        case .tardy:
+            return .yellow
+        }
+    }
 }
 
 // MARK: - User Role Enum
-enum UserRoleFM: String, Codable {
+enum UserRoleFM: String, Codable, CaseIterable {
     case student
     case mentor
     case admin
+    case pending
+    
+    var displayName: String {
+        switch self {
+        case .student:
+            return "Student"
+        case .mentor:
+            return "Mentor"
+        case .admin:
+            return "Admin"
+        case .pending:
+            return "Pending"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .student:
+            return "graduationcap.fill"
+        case .mentor:
+            return "person.2.fill"
+        case .admin:
+            return "shield.fill"
+        case .pending:
+            return "person.badge.plus.fill"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .student:
+            return .blue
+        case .mentor:
+            return .green
+        case .admin:
+            return .red
+        case .pending:
+            return .gray
+        }
+    }
 }
 
 // MARK: - User Status Enum
-enum UserStatusFM: String, Codable {
+enum UserStatusFM: String, Codable, CaseIterable {
     case active
-    case pending
     case inactive
+    case pending
+    
+    var displayName: String {
+        rawValue.capitalized
+    }
 }
 
 // MARK: - Date Formatters
-private let dateFormatter: DateFormatter = {
+let dateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd"
     return formatter
 }()
 
-private let dateTimeFormatter: DateFormatter = {
+let dateTimeFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
     return formatter
 }()
 
-// MARK: - FileMaker Record Protocols
+// MARK: - FileMaker Record Protocol
 /// Protocol for FileMaker record compatibility
 protocol FileMakerRecord {
     var id: UUID { get }
@@ -123,14 +179,26 @@ protocol FileMakerRecord {
     static func fromFileMakerDictionary(_ dictionary: [String: Any]) -> Self?
 }
 
+// MARK: - FileMaker Error
+enum FileMakerError: Error {
+    case recordNotFound
+    case authenticationFailed
+    case networkError
+    case permissionError
+    case invalidResponse
+    case unexpectedError(Error)
+}
+
 // MARK: - Data Models
+
+// AttendanceRecordFM Model
 struct AttendanceRecordFM: Identifiable, FileMakerRecord {
     let id: UUID
     let menteeID: UUID
     let date: Date
     let clockInTime: Date
-    let clockOutTime: Date
-    let status: AttendanceStatusFM
+    var clockOutTime: Date // Changed from 'let' to 'var' to allow modification
+    var status: AttendanceStatusFM // Changed from 'let' to 'var' to allow modification
     let location: CLLocation?
     var recordId: String? // FileMaker record ID
     
@@ -206,29 +274,9 @@ struct AttendanceRecordFM: Identifiable, FileMakerRecord {
             recordId: recordId
         )
     }
-    
-    // Convert to app's AttendanceRecord type
-    func toAppRecord() -> AttendanceRecord {
-        return AttendanceRecord(
-            date: date,
-            status: status.toAppStatus(),
-            clockInTime: clockInTime,
-            clockOutTime: clockOutTime
-        )
-    }
-    
-    // Create from the app's AttendanceRecord type
-    static func fromAppRecord(_ record: AttendanceRecord, menteeID: UUID) -> AttendanceRecordFM {
-        return AttendanceRecordFM(
-            menteeID: menteeID,
-            date: record.date,
-            clockInTime: record.clockInTime,
-            clockOutTime: record.clockOutTime,
-            status: AttendanceStatusFM.fromAppStatus(record.status)
-        )
-    }
 }
 
+// MenteeFM Model
 struct MenteeFM: Identifiable, FileMakerRecord {
     let id: UUID
     let name: String
@@ -303,41 +351,18 @@ struct MenteeFM: Identifiable, FileMakerRecord {
             recordId: recordId
         )
     }
-    
-    // Convert to app's Mentee type
-    func toAppMentee(attendanceRecords: [AttendanceRecord] = []) -> Mentee {
-        return Mentee(
-            name: name,
-            progress: progress,
-            email: email,
-            phone: phone,
-            imageName: imageName,
-            attendanceRecords: attendanceRecords
-        )
-    }
-    
-    // Create from the app's Mentee type
-    static func fromAppMentee(_ mentee: Mentee, monitorID: UUID? = nil) -> MenteeFM {
-        return MenteeFM(
-            name: mentee.name,
-            email: mentee.email,
-            phone: mentee.phone,
-            progress: mentee.progress,
-            monitorID: monitorID,
-            imageName: mentee.imageName
-        )
-    }
 }
 
+// UserFM Model
 struct UserFM: Identifiable, FileMakerRecord {
     let id: UUID
     let name: String
     let email: String
     let phone: String
-    let role: UserRoleFM
-    let status: UserStatusFM
-    let vacationDays: Int
-    let timeOffBalance: Double
+    var role: UserRoleFM // Changed from 'let' to 'var' to allow modification
+    var status: UserStatusFM // Changed from 'let' to 'var' to allow modification
+    var vacationDays: Int // Changed from 'let' to 'var' to allow modification
+    var timeOffBalance: Double // Changed from 'let' to 'var' to allow modification
     var recordId: String? // FileMaker record ID
     
     // Additional fields
@@ -449,7 +474,7 @@ struct UserFM: Identifiable, FileMakerRecord {
     }
     
     // Convert to app's AppUser1 type
-    func toAppUser() -> AppUser1 {
+    func toAppModel() -> AppUser1 {
         return AppUser1(
             name: name,
             status: status.rawValue.capitalized,
@@ -462,36 +487,160 @@ struct UserFM: Identifiable, FileMakerRecord {
     
     // Create from the app's AppUser1 type
     static func fromAppUser(_ user: AppUser1) -> UserFM {
-        let role: UserRoleFM
+        let roleFM: UserRoleFM
         switch user.role.lowercased() {
         case "admin":
-            role = .admin
+            roleFM = .admin
         case "mentor":
-            role = .mentor
+            roleFM = .mentor
+        case "pending":
+            roleFM = .pending
         default:
-            role = .student
+            roleFM = .student
         }
         
-        let status: UserStatusFM
+        let statusFM: UserStatusFM
         switch user.status.lowercased() {
         case "active":
-            status = .active
+            statusFM = .active
         case "pending", "pending invitation":
-            status = .pending
+            statusFM = .pending
         default:
-            status = .inactive
+            statusFM = .inactive
         }
         
         return UserFM(
             name: user.name,
             email: user.email,
             phone: user.phoneNumber,
-            role: role,
-            status: status,
+            role: roleFM,
+            status: statusFM,
             vacationDays: 10, // Default value
             timeOffBalance: 80.0, // Default value
             mentorName: user.monitorName
         )
+    }
+}
+
+// MARK: - User Profile for FileMaker
+struct UserProfileFM {
+    // Basic user information
+    var name: String = ""
+    var email: String = ""
+    var phone: String = ""
+    var role: UserRoleFM = .student
+    
+    // Educational information
+    var mentorName: String = ""
+    var classType: String = ""
+    var timeSlot: String = ""
+    var classCode: String = ""
+    
+    // Status
+    var onboardingComplete: Bool = false
+    
+    // Vacation and time off
+    var vacationDays: Int = 96
+    var timeOffBalance: Double = 768.0 // 96 days × 8 hours
+    
+    // Device information for automatic login
+    var deviceUUID: String = ""
+    
+    init() {
+        // Default initializer creates an empty profile
+    }
+    
+    init(name: String, email: String, phone: String, role: UserRoleFM = .student,
+         mentorName: String = "", classType: String = "", timeSlot: String = "",
+         classCode: String = "", onboardingComplete: Bool = false) {
+        self.name = name
+        self.email = email
+        self.phone = phone
+        self.role = role
+        self.mentorName = mentorName
+        self.classType = classType
+        self.timeSlot = timeSlot
+        self.classCode = classCode
+        self.onboardingComplete = onboardingComplete
+    }
+    
+    /// Convert to a dictionary for storage
+    func toDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "role": role.rawValue,
+            "mentorName": mentorName,
+            "classType": classType,
+            "timeSlot": timeSlot,
+            "classCode": classCode,
+            "onboardingComplete": onboardingComplete,
+            "vacationDays": vacationDays,
+            "timeOffBalance": timeOffBalance
+        ]
+        
+        if !deviceUUID.isEmpty {
+            dict["deviceUUID"] = deviceUUID
+        }
+        
+        return dict
+    }
+    
+    /// Create a profile from a dictionary
+    static func fromDictionary(_ dict: [String: Any]) -> UserProfileFM {
+        var profile = UserProfileFM()
+        
+        if let name = dict["name"] as? String {
+            profile.name = name
+        }
+        
+        if let email = dict["email"] as? String {
+            profile.email = email
+        }
+        
+        if let phone = dict["phone"] as? String {
+            profile.phone = phone
+        }
+        
+        if let roleString = dict["role"] as? String,
+           let role = UserRoleFM(rawValue: roleString) {
+            profile.role = role
+        }
+        
+        if let mentorName = dict["mentorName"] as? String {
+            profile.mentorName = mentorName
+        }
+        
+        if let classType = dict["classType"] as? String {
+            profile.classType = classType
+        }
+        
+        if let timeSlot = dict["timeSlot"] as? String {
+            profile.timeSlot = timeSlot
+        }
+        
+        if let classCode = dict["classCode"] as? String {
+            profile.classCode = classCode
+        }
+        
+        if let onboardingComplete = dict["onboardingComplete"] as? Bool {
+            profile.onboardingComplete = onboardingComplete
+        }
+        
+        if let vacationDays = dict["vacationDays"] as? Int {
+            profile.vacationDays = vacationDays
+        }
+        
+        if let timeOffBalance = dict["timeOffBalance"] as? Double {
+            profile.timeOffBalance = timeOffBalance
+        }
+        
+        if let deviceUUID = dict["deviceUUID"] as? String {
+            profile.deviceUUID = deviceUUID
+        }
+        
+        return profile
     }
 }
 
@@ -512,21 +661,35 @@ extension DateFormatter {
     }
 }
 
-// MARK: - Helper Extensions for Model Conversion
+// MARK: - Model Conversion Extensions
+extension AttendanceRecord {
+    // Convert to FileMaker-compatible type
+    func toFileMakerRecord(menteeID: UUID) -> AttendanceRecordFM {
+        return AttendanceRecordFM(
+            menteeID: menteeID,
+            date: date,
+            clockInTime: clockInTime,
+            clockOutTime: clockOutTime,
+            status: AttendanceStatusFM.fromAppStatus(status)
+        )
+    }
+}
+
 extension Mentee {
     func toFileMakerModel(monitorID: UUID? = nil) -> MenteeFM {
-        return MenteeFM.fromAppMentee(self, monitorID: monitorID)
+        return MenteeFM(
+            name: name,
+            email: email,
+            phone: phone,
+            progress: progress,
+            monitorID: monitorID,
+            imageName: imageName
+        )
     }
 }
 
 extension AppUser1 {
     func toFileMakerModel() -> UserFM {
         return UserFM.fromAppUser(self)
-    }
-}
-
-extension AttendanceRecord {
-    func toFileMakerModel(menteeID: UUID) -> AttendanceRecordFM {
-        return AttendanceRecordFM.fromAppRecord(self, menteeID: menteeID)
     }
 }

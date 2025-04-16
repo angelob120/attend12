@@ -3,18 +3,19 @@
 //  New app working
 //
 //  Created by AB on 1/9/25.
-//  Updated for onboarding flow with role switcher tab
+//  Updated to use FileMaker instead of CloudKit
 //
 
 import SwiftUI
+import Combine
 
 @main
 struct New_app_workingApp: App {
     // Add the app delegate
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
-    // Shared CloudKit configuration
-    @StateObject private var cloudKitConfig = CloudKitAppConfig.shared
+    // Shared FileMaker configuration
+    @StateObject private var fileMakerConfig = FileMakerAppConfig.shared
     
     // Create a separate CustomUserManager for environment injection
     @StateObject private var userManager = CustomUserManager()
@@ -31,8 +32,8 @@ struct New_app_workingApp: App {
             ZStack {
                 if isCheckingAuth {
                     // Show loading view while checking authentication
-                    LoadingView()
-                        .environmentObject(cloudKitConfig)
+                    FileMakerLoadingView()
+                        .environmentObject(fileMakerConfig)
                         .environmentObject(userManager)
                         .onAppear {
                             checkDeviceAuthentication()
@@ -44,14 +45,14 @@ struct New_app_workingApp: App {
                         userManager.allUsers.append(user.toAppModel())
                         needsOnboarding = false
                     })
-                    .environmentObject(cloudKitConfig)
+                    .environmentObject(fileMakerConfig)
                     .environmentObject(userManager)
                     .transition(.opacity)
                     .animation(.easeInOut, value: needsOnboarding)
                 } else {
-                    // Show the StudentDashboardView with role switcher tab
+                    // Show the main content with tab view
                     MainTabView()
-                        .environmentObject(cloudKitConfig)
+                        .environmentObject(fileMakerConfig)
                         .environmentObject(userManager)
                         .transition(.opacity)
                         .animation(.easeInOut, value: needsOnboarding)
@@ -61,30 +62,26 @@ struct New_app_workingApp: App {
     }
     
     init() {
-        // Configure CloudKit during app startup
-        configureCloudKit()
+        // Configure FileMaker during app startup
+        configureFileMaker()
     }
     
-    // Check if device UUID matches an existing user in CloudKit
+    // Check if device UUID matches an existing user in FileMaker
     private func checkDeviceAuthentication() {
         Task {
             do {
-                // Wait for CloudKit to be ready
-                while !cloudKitConfig.isReady {
+                // Wait for FileMaker to be ready
+                while !fileMakerConfig.isReady {
                     try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 }
                 
-                // Fetch all users from CloudKit
-                let allUsers = try await CloudKitService.shared.fetchAllUsers()
+                // Fetch all users from FileMaker
+                let allUsers = try await FileMakerService.shared.fetchAllUsers()
                 
                 // Look for a user with matching device UUID
                 let matchingUser = allUsers.first { user in
                     // Check if user record has a deviceUUID field that matches this device
-                    if let record = user.record,
-                       let userDeviceUUID = record["deviceUUID"] as? String {
-                        return userDeviceUUID == deviceUUID
-                    }
-                    return false
+                    return user.deviceUUID == deviceUUID
                 }
                 
                 DispatchQueue.main.async {
@@ -93,14 +90,15 @@ struct New_app_workingApp: App {
                         userManager.allUsers.append(user.toAppModel())
                         needsOnboarding = false
                         
+                        // Update FileMaker configuration with this user
+                        fileMakerConfig.currentUserFM = user
+                        fileMakerConfig.currentUserRoleFM = user.role
+                        fileMakerConfig.updateUserProfile(from: user)
+                        
                         // Load any existing user data if available
-                        if let userName = user.record?["name"] as? String {
-                            UserData.shared.fullName = userName
-                        }
-                        if let userEmail = user.record?["email"] as? String {
-                            UserData.shared.email = userEmail
-                        }
-                        if let mentorName = user.record?["mentorName"] as? String {
+                        UserData.shared.fullName = user.name
+                        UserData.shared.email = user.email
+                        if let mentorName = user.mentorName {
                             UserData.shared.mentorName = mentorName
                         }
                         UserData.shared.vacationDays = user.vacationDays
@@ -116,7 +114,7 @@ struct New_app_workingApp: App {
                     isCheckingAuth = false
                 }
             } catch {
-                // Handle error - if we can't access CloudKit, default to requiring onboarding
+                // Handle error - if we can't access FileMaker, default to requiring onboarding
                 print("Error checking device authentication: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     needsOnboarding = true
@@ -129,7 +127,7 @@ struct New_app_workingApp: App {
 
 // Main tab view with Dashboard and Role Switcher
 struct MainTabView: View {
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     @EnvironmentObject var userManager: CustomUserManager
     @State private var selectedTab = 0
     
@@ -154,7 +152,7 @@ struct MainTabView: View {
 
 // Role Switcher View
 struct RoleSwitcherView: View {
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     @EnvironmentObject var userManager: CustomUserManager
     @State private var showView: String? = nil
     
@@ -232,14 +230,14 @@ struct RoleSwitcherView: View {
     }
     
     private func switchToRole(_ role: String) {
-        // Set the role in CloudKitConfig if needed
+        // Set the role in FileMakerConfig if needed
         switch role {
         case "admin":
-            cloudKitConfig.currentUserRoleCK = .admin
+            fileMakerConfig.currentUserRoleFM = .admin
         case "mentor":
-            cloudKitConfig.currentUserRoleCK = .mentor
+            fileMakerConfig.currentUserRoleFM = .mentor
         case "student":
-            cloudKitConfig.currentUserRoleCK = .student
+            fileMakerConfig.currentUserRoleFM = .student
         default:
             break
         }
@@ -265,4 +263,3 @@ struct RoleSwitcherView: View {
         }
     }
 }
-

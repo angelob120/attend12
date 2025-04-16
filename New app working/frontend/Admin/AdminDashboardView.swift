@@ -284,6 +284,6 @@ struct UserRow: View {
 struct AdminDashboardView_Previews: PreviewProvider {
     static var previews: some View {
         AdminDashboardView()
-            .environmentObject(CloudKitAppConfig.shared)
+            .environmentObject(FileMakerAppConfig.shared)
     }
 }

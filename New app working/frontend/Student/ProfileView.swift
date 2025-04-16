@@ -11,7 +11,7 @@ import SwiftUI
 struct ProfileView: View {
     // Use the shared UserData to display user information
     @ObservedObject private var userData = UserData.shared
-    @EnvironmentObject var cloudKitConfig: CloudKitAppConfig
+    @EnvironmentObject var fileMakerConfig: FileMakerAppConfig
     
     // Example state for toggles, etc.
     @State private var alertPopupsOn = true
@@ -109,15 +109,15 @@ struct ProfileView: View {
                 SettingsSectionView(title: "Personal Information") {
                     SettingsRow(iconName: "person.fill", text: userData.fullName.isEmpty ? "Not Set" : userData.fullName)
                     SettingsRow(iconName: "envelope.fill", text: userData.email.isEmpty ? "Not Set" : userData.email)
-                    SettingsRow(iconName: "phone.fill", text: cloudKitConfig.userProfile.phone.isEmpty ? "Not Set" : cloudKitConfig.userProfile.phone)
+                    SettingsRow(iconName: "phone.fill", text: fileMakerConfig.userProfile.phone.isEmpty ? "Not Set" : fileMakerConfig.userProfile.phone)
                     SettingsRow(iconName: "person.2.fill", text: userData.mentorName.isEmpty ? "Not Assigned" : userData.mentorName, trailingText: "Mentor")
                 }
                 
                 // CLASS INFORMATION
                 SettingsSectionView(title: "Class Information") {
-                    SettingsRow(iconName: "graduationcap.fill", text: cloudKitConfig.userProfile.classType.isEmpty ? "Regular Class" : cloudKitConfig.userProfile.classType)
-                    SettingsRow(iconName: "clock.fill", text: cloudKitConfig.userProfile.timeSlot.isEmpty ? "AM" : cloudKitConfig.userProfile.timeSlot, trailingText: "Session")
-                    SettingsRow(iconName: "number", text: cloudKitConfig.userProfile.classCode.isEmpty ? "Not Set" : cloudKitConfig.userProfile.classCode, trailingText: "Code")
+                    SettingsRow(iconName: "graduationcap.fill", text: fileMakerConfig.userProfile.classType.isEmpty ? "Regular Class" : fileMakerConfig.userProfile.classType)
+                    SettingsRow(iconName: "clock.fill", text: fileMakerConfig.userProfile.timeSlot.isEmpty ? "AM" : fileMakerConfig.userProfile.timeSlot, trailingText: "Session")
+                    SettingsRow(iconName: "number", text: fileMakerConfig.userProfile.classCode.isEmpty ? "Not Set" : fileMakerConfig.userProfile.classCode, trailingText: "Code")
                 }
                 
                 // TIME OFF
@@ -134,7 +134,7 @@ struct ProfileView: View {
                     SettingsRow(iconName: "person.badge.shield.checkmark", text: "Active", trailingText: Date().formatted(date: .abbreviated, time: .omitted))
                     SettingsRow(iconName: "calendar", text: formattedDate())
                     SettingsRow(iconName: "checklist",
-                               text: cloudKitConfig.userProfile.onboardingComplete ? "Onboarding Complete" : "Onboarding In Progress")
+                               text: fileMakerConfig.userProfile.onboardingComplete ? "Onboarding Complete" : "Onboarding In Progress")
                 }
                 
                 // NOTIFICATIONS
@@ -173,7 +173,7 @@ struct ProfileView: View {
                 // SIGN OUT Button
                 Button(action: {
                     // Sign out action
-                    cloudKitConfig.resetAll()
+                    fileMakerConfig.resetAll()
                 }) {
                     Text("Sign Out")
                         .font(.headline)
@@ -282,7 +282,7 @@ struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationView {
             ProfileView()
-                .environmentObject(CloudKitAppConfig.shared)
+                .environmentObject(FileMakerAppConfig.shared)
         }
     }
 }
